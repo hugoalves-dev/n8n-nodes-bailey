@@ -157,7 +157,6 @@ class BaileyTrigger {
         this.methods = {
             credentialTest: {
                 async baileyCredentialTest(credential) {
-                    const node = this.getNode();
                     const creds = credential.data;
                     const { sessionId, authDataPath, authMethod, phoneNumber } = creds;
                     const sessionDir = (0, AuthStateStore_1.sessionDirFromConfig)(authDataPath !== null && authDataPath !== void 0 ? authDataPath : '~/.n8n/baileys', sessionId);
