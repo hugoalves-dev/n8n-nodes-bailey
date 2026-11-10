@@ -1,0 +1,86 @@
+name: Recover published npm release
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/recover-npm-release.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: recover-bailey-release
+  cancel-in-progress: false
+
+jobs:
+  import-upstream-npm-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Download and verify npm tarball
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          npm_metadata="$RUNNER_TEMP/n8n-nodes-bailey-metadata.json"
+          npm_archive="$RUNNER_TEMP/n8n-nodes-bailey-0.1.2.tgz"
+
+          curl --fail --location --silent --show-error --retry 3 \
+            'https://registry.npmjs.org/@jazario%2Fn8n-nodes-bailey/0.1.2' \
+            --output "$npm_metadata"
+
+          archive_url="$(jq -er '.dist.tarball' "$npm_metadata")"
+          expected_integrity="$(jq -er '.dist.integrity' "$npm_metadata")"
+          if [[ "$archive_url" != https://registry.npmjs.org/* ]]; then
+            echo "Unexpected tarball URL: $archive_url" >&2
+            exit 1
+          fi
+
+          curl --fail --location --silent --show-error --retry 3 \
+            "$archive_url" --output "$npm_archive"
+
+          actual_integrity="sha512-$(openssl dgst -sha512 -binary "$npm_archive" | base64 --wrap=0)"
+          if [[ "$actual_integrity" != "$expected_integrity" ]]; then
+            echo "npm SHA-512 integrity mismatch" >&2
+            exit 1
+          fi
+          echo "Verified upstream @jazario/n8n-nodes-bailey@0.1.2 SHA-512 integrity"
+
+          extraction="$RUNNER_TEMP/bailey-upstream"
+          mkdir -p "$extraction"
+          tar -xzf "$npm_archive" -C "$extraction"
+
+          test -d "$extraction/package/dist"
+          test -f "$extraction/package/package.json"
+          test -f "$extraction/package/README.md"
+
+          rm -rf ./dist
+          mkdir -p ./dist
+          cp -a "$extraction/package/dist/." ./dist/
+          cp "$extraction/package/package.json" ./package.json
+          cp "$extraction/package/README.md" ./UPSTREAM_README.md
+
+          if [[ "$(jq -r .name package.json)" != '@jazario/n8n-nodes-bailey' ]] || \
+             [[ "$(jq -r .version package.json)" != '0.1.2' ]]; then
+            echo "Unexpected package identity" >&2
+            exit 1
+          fi
+
+      - name: Commit recovered files
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- dist package.json UPSTREAM_README.md
+
+          if git diff --cached --quiet; then
+            echo "Upstream build already committed."
+            exit 0
+          fi
+
+          git commit -m "chore: recover published @jazario/n8n-nodes-bailey 0.1.2"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
