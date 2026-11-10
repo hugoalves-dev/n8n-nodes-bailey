@@ -222,12 +222,7 @@ class BaileyTrigger {
                                     QRCode.toDataURL(qr, { width: 300, margin: 2 }).then((dataUrl) => {
                                         done({
                                             status: 'OK',
-                                            message: `<div style="text-align:center">` +
-                                                `<p><b>Scan this QR code in WhatsApp</b></p>` +
-                                                `<p style="color:#888;font-size:12px">WhatsApp → Settings → Linked Devices → Link a Device</p>` +
-                                                `<img src="${dataUrl}" style="width:250px;height:250px;display:block;margin:12px auto" />` +
-                                                `<p style="color:#888;font-size:12px">The connection stays open while you scan this code.</p>` +
-                                                `</div>`,
+                                            message: `QR code ready. The credential test result supports text only, so scan the QR code from the Bailey Trigger output while listening manually. The connection stays open for up to five minutes.`,
                                         });
                                     }).catch(() => {
                                         done({
@@ -248,13 +243,7 @@ class BaileyTrigger {
                                                 : code;
                                             done({
                                                 status: 'OK',
-                                                message: `<div style="text-align:center">` +
-                                                    `<p><b>Pairing is pending. This credential is not connected until you enter the code.</b></p>` +
-                                                    `<p><b>Enter this pairing code in WhatsApp</b></p>` +
-                                                    `<p style="color:#888;font-size:12px">WhatsApp → Settings → Linked Devices → Link a Device → Link with phone number</p>` +
-                                                    `<p style="font-size:36px;font-weight:bold;letter-spacing:8px;font-family:monospace;margin:16px 0">${formatted}</p>` +
-                                                    `<p style="color:#888;font-size:12px">The connection stays open while you enter this code.</p>` +
-                                                    `</div>`,
+                                                message: `Pairing code: ${formatted}. In WhatsApp, open Settings → Linked Devices → Link a Device → Link with phone number and enter this code. Keep this credential test open while pairing; the socket remains available for up to five minutes.`,
                                             });
                                         },
                                         onError: (message) => {
