@@ -46,7 +46,7 @@ The GitHub Actions release workflow publishes `@hugoalves-dev/n8n-nodes-bailey` 
 ### One-time npm setup
 
 1. Make sure the `@hugoalves-dev` scope is owned by your npm account and that you can publish public scoped packages.
-2. If `@hugoalves-dev/n8n-nodes-bailey` is not yet present on npm, publish the initial version once from the repository after merging this setup: run `npm ci`, `npm run build`, log in with `npm login`, then run `npm publish --access public`. If the package already exists, skip this step.
+2. If `@hugoalves-dev/n8n-nodes-bailey` is not yet present on npm, publish the initial version once from the repository after merging the publishing setup and publish-hook fix: use Node.js 24, run `npm ci`, log in with `npm login`, then run `npm publish --access public` (the `prepublishOnly` hook builds the package). If the package already exists, skip this step.
 3. In the package settings on npmjs.com, add a **Trusted Publisher** with provider **GitHub Actions**, owner `hugoalves-dev`, repository `n8n-nodes-bailey`, and workflow filename `publish-npm.yml`. Leave the environment blank; this workflow does not use a GitHub Environment. Save it and trigger a successful publish within two days, or npm expires the new trust configuration.
 4. No `NPM_TOKEN` secret is needed. The workflow requests the OIDC token with the narrowly scoped `id-token: write` permission.
 
