@@ -38,3 +38,25 @@ For migration from the legacy package, preserve and back up its session director
 ## License and attribution
 
 MIT. See [LICENSE](LICENSE) and the preserved original npm distribution under `upstream/0.1.2/`.
+
+## Publishing to npm
+
+The GitHub Actions release workflow publishes `@hugoalves-dev/n8n-nodes-bailey` when a version tag (`vX.Y.Z`) is pushed. It runs lint, type-checking, tests, build, and `npm pack --dry-run`, then verifies that the tag matches `package.json` before publishing. Releases use npm Trusted Publishing (GitHub OIDC); no npm token or GitHub secret is required. npm also creates provenance for this trusted publish.
+
+### One-time npm setup
+
+1. Make sure the `@hugoalves-dev` scope is owned by your npm account and that you can publish public scoped packages.
+2. If `@hugoalves-dev/n8n-nodes-bailey` is not yet present on npm, publish the initial version once from the repository after merging this setup: run `npm ci`, `npm run build`, log in with `npm login`, then run `npm publish --access public`. If the package already exists, skip this step.
+3. In the package settings on npmjs.com, add a **Trusted Publisher** with provider **GitHub Actions**, owner `hugoalves-dev`, repository `n8n-nodes-bailey`, and workflow filename `publish-npm.yml`. Leave the environment blank; this workflow does not use a GitHub Environment. Save it and trigger a successful publish within two days, or npm expires the new trust configuration.
+4. No `NPM_TOKEN` secret is needed. The workflow requests the OIDC token with the narrowly scoped `id-token: write` permission.
+
+### Releasing a version
+
+Update `version` in both `package.json` and `package-lock.json`, commit and push that change, then create and push the matching tag. For example, if the package version is `0.2.1`:
+
+```sh
+git tag v0.2.1
+git push origin v0.2.1
+```
+
+The workflow rejects a tag when its version does not match `package.json`. Check the **Actions** tab for the validation and publish result.
