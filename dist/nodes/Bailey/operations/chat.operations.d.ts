@@ -1,3 +1,16 @@
-import type { WASocket } from '@whiskeysockets/baileys';
-import type { IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
-export declare function executeChatOperation(this: IExecuteFunctions, sock: WASocket, operation: string, i: number): Promise<INodeExecutionData>;
+export { executeChatOperation };
+declare function executeChatOperation(sock: any, operation: any, i: any): Promise<{
+    json: {
+        success: boolean;
+        jid: any;
+        action: string;
+        duration?: undefined;
+    };
+} | {
+    json: {
+        success: boolean;
+        jid: any;
+        action: string;
+        duration: any;
+    };
+}>;

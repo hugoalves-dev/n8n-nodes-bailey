@@ -1,6 +1,9 @@
+// Reconstructed from the published 0.1.2 JavaScript distribution; original TypeScript was unavailable.
+// @ts-nocheck
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.communityFields = exports.communityOperations = void 0;
+Object.defineProperty(exports, "__esModule", { value: true });
 exports.communityOperations = [
     {
         displayName: 'Operation',

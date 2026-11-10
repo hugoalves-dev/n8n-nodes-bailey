@@ -1,20 +1,12 @@
-import type { AuthenticationCreds, SignalDataTypeMap } from '@whiskeysockets/baileys';
-type SignalDataSet = {
-    [T in keyof SignalDataTypeMap]?: {
-        [id: string]: SignalDataTypeMap[T];
-    };
-};
-export interface BaileyAuthState {
-    creds: AuthenticationCreds;
+export { useFileAuthState };
+export { sessionDirFromConfig };
+declare function useFileAuthState(sessionDir: any): Promise<{
+    creds: any;
     keys: {
-        get<T extends keyof SignalDataTypeMap>(type: T, ids: string[]): Promise<{
-            [id: string]: SignalDataTypeMap[T];
-        }>;
-        set(data: SignalDataSet): Promise<void>;
+        get(type: any, ids: any): Promise<{}>;
+        set(data: any): Promise<void>;
         clear(): Promise<void>;
     };
-    saveCreds(): Promise<void>;
-}
-export declare function useFileAuthState(sessionDir: string): Promise<BaileyAuthState>;
-export declare function sessionDirFromConfig(authDataPath: string, sessionId: string): string;
-export {};
+    saveCreds: () => Promise<void>;
+}>;
+declare function sessionDirFromConfig(authDataPath: any, sessionId: any): any;

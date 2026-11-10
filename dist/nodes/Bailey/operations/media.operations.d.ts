@@ -1,3 +1,13 @@
-import type { WASocket } from '@whiskeysockets/baileys';
-import type { IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
-export declare function executeMediaOperation(this: IExecuteFunctions, sock: WASocket, operation: string, i: number): Promise<INodeExecutionData>;
+export { executeMediaOperation };
+declare function executeMediaOperation(sock: any, operation: any, i: any): Promise<{
+    json: {
+        fileName: any;
+        mimeType: any;
+    };
+    binary: {
+        [x: number]: any;
+    };
+} | {
+    json: any;
+    binary?: undefined;
+}>;

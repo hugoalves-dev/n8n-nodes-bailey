@@ -1,6 +1,9 @@
+// Reconstructed from the published 0.1.2 JavaScript distribution; original TypeScript was unavailable.
+// @ts-nocheck
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.executeNewsletterOperation = executeNewsletterOperation;
+Object.defineProperty(exports, "__esModule", { value: true });
 const n8n_workflow_1 = require("n8n-workflow");
 async function executeNewsletterOperation(sock, operation, i) {
     var _a, _b, _c, _d, _e, _f, _g, _h, _j;

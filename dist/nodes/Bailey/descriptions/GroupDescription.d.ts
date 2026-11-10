@@ -1,3 +1,106 @@
-import type { INodeProperties } from 'n8n-workflow';
-export declare const groupOperations: INodeProperties[];
-export declare const groupFields: INodeProperties[];
+export declare const groupOperations: {
+    displayName: string;
+    name: string;
+    type: string;
+    noDataExpression: boolean;
+    displayOptions: {
+        show: {
+            resource: string[];
+        };
+    };
+    options: {
+        name: string;
+        value: string;
+        action: string;
+    }[];
+    default: string;
+}[];
+export declare const groupFields: ({
+    displayName: string;
+    name: string;
+    type: string;
+    required: boolean;
+    default: string;
+    displayOptions: {
+        show: {
+            resource: string[];
+            operation: string[];
+        };
+    };
+    description: string;
+    placeholder: string;
+    typeOptions?: undefined;
+    options?: undefined;
+} | {
+    displayName: string;
+    name: string;
+    type: string;
+    required: boolean;
+    default: string;
+    displayOptions: {
+        show: {
+            resource: string[];
+            operation: string[];
+        };
+    };
+    description: string;
+    placeholder?: undefined;
+    typeOptions?: undefined;
+    options?: undefined;
+} | {
+    displayName: string;
+    name: string;
+    type: string;
+    default: string;
+    displayOptions: {
+        show: {
+            resource: string[];
+            operation: string[];
+        };
+    };
+    description: string;
+    typeOptions: {
+        rows: number;
+    };
+    required?: undefined;
+    placeholder?: undefined;
+    options?: undefined;
+} | {
+    displayName: string;
+    name: string;
+    type: string;
+    default: string;
+    displayOptions: {
+        show: {
+            resource: string[];
+            operation: string[];
+        };
+    };
+    options: {
+        name: string;
+        value: string;
+    }[];
+    required?: undefined;
+    description?: undefined;
+    placeholder?: undefined;
+    typeOptions?: undefined;
+} | {
+    displayName: string;
+    name: string;
+    type: string;
+    default: number;
+    displayOptions: {
+        show: {
+            resource: string[];
+            operation: string[];
+        };
+    };
+    options: {
+        name: string;
+        value: number;
+    }[];
+    required?: undefined;
+    description?: undefined;
+    placeholder?: undefined;
+    typeOptions?: undefined;
+})[];

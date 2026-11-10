@@ -1,3 +1,49 @@
-import type { INodeProperties } from 'n8n-workflow';
-export declare const callOperations: INodeProperties[];
-export declare const callFields: INodeProperties[];
+export declare const callOperations: {
+    displayName: string;
+    name: string;
+    type: string;
+    noDataExpression: boolean;
+    displayOptions: {
+        show: {
+            resource: string[];
+        };
+    };
+    options: {
+        name: string;
+        value: string;
+        action: string;
+    }[];
+    default: string;
+}[];
+export declare const callFields: ({
+    displayName: string;
+    name: string;
+    type: string;
+    required: boolean;
+    default: string;
+    displayOptions: {
+        show: {
+            resource: string[];
+            operation: string[];
+        };
+    };
+    description: string;
+    options?: undefined;
+} | {
+    displayName: string;
+    name: string;
+    type: string;
+    default: string;
+    displayOptions: {
+        show: {
+            resource: string[];
+            operation: string[];
+        };
+    };
+    options: {
+        name: string;
+        value: string;
+    }[];
+    required?: undefined;
+    description?: undefined;
+})[];

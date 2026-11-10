@@ -1,5 +1,5 @@
-import type { IExecuteFunctions, INodeExecutionData, INodeType, INodeTypeDescription } from 'n8n-workflow';
-export declare class Bailey implements INodeType {
-    description: INodeTypeDescription;
-    execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]>;
+declare class Bailey {
+    constructor();
+    execute(): Promise<any[][]>;
 }
+export { Bailey };

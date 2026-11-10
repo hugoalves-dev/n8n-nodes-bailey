@@ -1,12 +1,10 @@
-import type { proto, WAMessageKey } from '@whiskeysockets/baileys';
-export declare class MessageCache {
-    private readonly cache;
-    private readonly maxSize;
+declare class MessageCache {
     constructor(maxSize?: number);
-    private keyFor;
-    set(key: WAMessageKey, message: proto.IMessage): void;
-    get(key: WAMessageKey): proto.IMessage | undefined;
-    private evictIfNeeded;
+    keyFor(key: any): string;
+    set(key: any, message: any): void;
+    get(key: any): any;
+    evictIfNeeded(): void;
     clear(): void;
-    get size(): number;
+    get size(): any;
 }
+export { MessageCache };

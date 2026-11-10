@@ -1,0 +1,120 @@
+// Reconstructed from the published 0.1.2 JavaScript distribution; original TypeScript was unavailable.
+// @ts-nocheck
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+export const communityOperations = [
+    {
+        displayName: 'Operation',
+        name: 'operation',
+        type: 'options',
+        noDataExpression: true,
+        displayOptions: { show: { resource: ['community'] } },
+        options: [
+            { name: 'Add Participants', value: 'addParticipants', action: 'Add members to community' },
+            { name: 'Create', value: 'create', action: 'Create a new community' },
+            { name: 'Create Sub-Group', value: 'createGroup', action: 'Create a group within community' },
+            { name: 'Fetch Linked Groups', value: 'fetchLinkedGroups', action: 'Get all groups in community' },
+            { name: 'Get All Participating', value: 'getAllParticipating', action: 'Get all communities you are in' },
+            { name: 'Get Invite Code', value: 'getInviteCode', action: 'Get community invite link' },
+            { name: 'Get Metadata', value: 'getMetadata', action: 'Get community info' },
+            { name: 'Leave', value: 'leave', action: 'Leave the community' },
+            { name: 'Link Group', value: 'linkGroup', action: 'Link an existing group to community' },
+            { name: 'Remove Participants', value: 'removeParticipants', action: 'Remove members from community' },
+            { name: 'Set Join Approval Mode', value: 'setJoinApprovalMode', action: 'Require admin approval to join' },
+            { name: 'Toggle Ephemeral', value: 'toggleEphemeral', action: 'Set disappearing messages duration' },
+            { name: 'Unlink Group', value: 'unlinkGroup', action: 'Unlink a group from community' },
+            { name: 'Update Description', value: 'updateDescription', action: 'Update community description' },
+            { name: 'Update Settings', value: 'updateSettings', action: 'Update community settings' },
+            { name: 'Update Subject', value: 'updateSubject', action: 'Update community name' },
+        ],
+        default: 'create',
+    },
+];
+export const communityFields = [
+    {
+        displayName: 'Community JID',
+        name: 'jid',
+        type: 'string',
+        required: true,
+        default: '',
+        displayOptions: {
+            show: {
+                resource: ['community'],
+                operation: ['getMetadata', 'createGroup', 'linkGroup', 'unlinkGroup', 'fetchLinkedGroups',
+                    'updateSubject', 'updateDescription', 'updateSettings', 'addParticipants', 'removeParticipants',
+                    'leave', 'getInviteCode', 'toggleEphemeral', 'setJoinApprovalMode'],
+            },
+        },
+        description: 'JID of the community',
+    },
+    {
+        displayName: 'Subject',
+        name: 'subject',
+        type: 'string',
+        required: true,
+        default: '',
+        displayOptions: { show: { resource: ['community'], operation: ['create', 'updateSubject', 'createGroup'] } },
+    },
+    {
+        displayName: 'Body / Description',
+        name: 'body',
+        type: 'string',
+        default: '',
+        displayOptions: { show: { resource: ['community'], operation: ['create', 'updateDescription'] } },
+        typeOptions: { rows: 3 },
+    },
+    {
+        displayName: 'Group JID',
+        name: 'groupJid',
+        type: 'string',
+        required: true,
+        default: '',
+        displayOptions: { show: { resource: ['community'], operation: ['linkGroup', 'unlinkGroup'] } },
+        description: 'JID of the group to link/unlink',
+    },
+    {
+        displayName: 'Initial Participants',
+        name: 'participants',
+        type: 'string',
+        default: '',
+        displayOptions: { show: { resource: ['community'], operation: ['createGroup', 'addParticipants', 'removeParticipants'] } },
+        description: 'Comma-separated list of JIDs',
+    },
+    {
+        displayName: 'Setting',
+        name: 'setting',
+        type: 'options',
+        default: 'announcement',
+        displayOptions: { show: { resource: ['community'], operation: ['updateSettings'] } },
+        options: [
+            { name: 'Announcement Mode', value: 'announcement' },
+            { name: 'Not Announcement', value: 'not_announcement' },
+            { name: 'Locked', value: 'locked' },
+            { name: 'Unlocked', value: 'unlocked' },
+        ],
+    },
+    {
+        displayName: 'Ephemeral Duration',
+        name: 'ephemeralDuration',
+        type: 'options',
+        default: 0,
+        displayOptions: { show: { resource: ['community'], operation: ['toggleEphemeral'] } },
+        options: [
+            { name: 'Off', value: 0 },
+            { name: '24 Hours', value: 86400 },
+            { name: '7 Days', value: 604800 },
+            { name: '90 Days', value: 7776000 },
+        ],
+    },
+    {
+        displayName: 'Join Approval Mode',
+        name: 'joinApprovalMode',
+        type: 'options',
+        default: 'off',
+        displayOptions: { show: { resource: ['community'], operation: ['setJoinApprovalMode'] } },
+        options: [
+            { name: 'Off (Auto-Approve)', value: 'off' },
+            { name: 'On (Admin Must Approve)', value: 'on' },
+        ],
+    },
+];
