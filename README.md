@@ -4,10 +4,6 @@ An independently maintained reconstruction of the Bailey n8n community node, bas
 
 ## Provenance
 
-The exact upstream npm tarball, published metadata, and README are preserved under [`upstream/0.1.2/`](upstream/0.1.2/). `CONTENTS.sha512` records hashes for the extracted package files, while `SHA512SUMS` verifies the archived tarball. The recovery workflow verifies the registry integrity before updating this snapshot.
-
-The original TypeScript, tests, build configuration, lockfile, and Git history were not recovered. The `.js.map` files contain no `sourcesContent`. The TypeScript files in `credentials/` and `nodes/` are a manual reconstruction from the npm JavaScript and declarations; they are not represented as recovered original source.
-
 The upstream package was authored by **jazarie2 / @jazario** and is MIT licensed. This fork preserves that attribution and the license. It uses the separate package identity `@hugoalves-dev/n8n-nodes-bailey`; this repository does not publish the upstream package.
 
 ## Development
