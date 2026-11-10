@@ -1,27 +1,40 @@
-# n8n-nodes-bailey (recovered)
+# n8n-nodes-bailey
 
-Recovery of the public npm release **`@jazario/n8n-nodes-bailey@0.1.2`** after the [upstream repository](https://github.com/jazarie2/n8n-nodes-bailey) became unavailable.
+An independently maintained reconstruction of the Bailey n8n community node, based on the published `@jazario/n8n-nodes-bailey@0.1.2` distribution.
 
-> **Provenance:** The files under `dist/`, the original `package.json`, and `UPSTREAM_README.md` are copied from the **published npm tarball**, without modifications. Original author/package: **jazarie2 / @jazario**. Original package metadata declares **MIT**. The recovery workflow verifies the npm registry's SHA-512 integrity checksum before extraction.
+## Provenance
 
-## What was recovered
+The exact upstream npm tarball, published metadata, and README are preserved under [`upstream/0.1.2/`](upstream/0.1.2/). `CONTENTS.sha512` records hashes for the extracted package files, while `SHA512SUMS` verifies the archived tarball. The recovery workflow verifies the registry integrity before updating this snapshot.
 
-- `dist/`: compiled JavaScript, declaration files, source maps, assets.
-- `package.json`: original, unmodified npm metadata.
-- `UPSTREAM_README.md`: original package documentation.
+The original TypeScript, tests, build configuration, lockfile, and Git history were not recovered. The `.js.map` files contain no `sourcesContent`. The TypeScript files in `credentials/` and `nodes/` are a manual reconstruction from the npm JavaScript and declarations; they are not represented as recovered original source.
 
-**Not recovered:** original TypeScript files, tests, build configuration, lockfile, and unpublished repository history. The published `.js.map` files do **not** contain `sourcesContent`. This is a **redistributable snapshot of the npm build**, not a restoration of the original source repository.
+The upstream package was authored by **jazarie2 / @jazario** and is MIT licensed. This fork preserves that attribution and the license. It uses the separate package identity `@hugoalves-dev/n8n-nodes-bailey`; this repository does not publish the upstream package.
 
-## Known issue
+## Development
 
-The published `BaileyTrigger.node.js` requests a pairing code on `connection === 'open'` while credentials are not yet registered. That event normally occurs *after* successful pairing, so a new session may never receive a pairing code. The credential test also ends the socket while reporting a QR/code prompt. **No fixes have been applied in this recovery commit.**
+Requirements: Node.js 22 and npm.
 
-## Development and publication
+```sh
+npm ci
+npm run typecheck
+npm test
+npm run build
+npm pack --dry-run
+```
 
-The restored package still uses the upstream npm name `@jazario/n8n-nodes-bailey`; **do not republish under that name**. Before publishing a maintained fork, rename the package to a namespace you control, create a proper source project, correct pairing/reconnection/session handling, and validate on an isolated WhatsApp session.
+All upstream action and trigger operations remain available. New QR or pairing-code prompts are shown by the credential test, which keeps the unauthenticated socket alive for scanning. The trigger shares that socket and requests a pairing code at the pre-authentication QR update. During manual listening, the trigger emits the code as a `pairing.code` event so it is visible in n8n; keep that execution private and remove it after pairing. The code is not written to server logs or auth files.
 
-To rerun the recovery, use [Recover published npm release](.github/workflows/recover-npm-release.yml) from GitHub Actions. The workflow does not execute any code from the npm package: it downloads, verifies, and copies files.
+Authentication files are stored below `~/.n8n/baileys/<sessionId>` by default. In Docker, mount the configured auth directory as a persistent volume. The `sessionId` must be a single path segment; use the same value in credentials shared by a trigger and action node. Set **Idle Timeout (Seconds)** to `0` to disable idle cleanup.
 
-## Attribution
+For migration from the legacy package, preserve and back up its session directory before changing package names or auth paths. Use the same session ID and point **Auth Data Path** at the existing directory. Do not remove the old directory; Baileys updates auth files as the session changes.
 
-Original npm package: [@jazario/n8n-nodes-bailey](https://www.npmjs.com/package/@jazario/n8n-nodes-bailey) (v0.1.2, MIT), by **jazarie2**. This repository is an independent recovery/continuation and is not presented as the original author's repository.
+## Compatibility and limitations
+
+- This node uses `@whiskeysockets/baileys` to connect to WhatsApp Web. It is not an official WhatsApp API integration; WhatsApp can change the protocol, disconnect linked devices, or restrict accounts.
+- The package includes QR pairing, phone-number pairing code, existing sessions, message events, and the action operations represented in the v0.1.2 distribution.
+- Real WhatsApp integration tests require a dedicated, non-production account and a disposable n8n environment. Unit tests do not claim to verify live pairing, volume behavior in Docker, or message delivery.
+- Do not use a production WhatsApp session to validate changes.
+
+## License and attribution
+
+MIT. See [LICENSE](LICENSE) and the preserved original npm distribution under `upstream/0.1.2/`.

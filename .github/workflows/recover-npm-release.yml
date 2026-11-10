@@ -3,6 +3,7 @@ name: Recover published npm release
 on:
   workflow_dispatch:
   push:
+    branches: [main]
     paths:
       - .github/workflows/recover-npm-release.yml
 
@@ -57,14 +58,17 @@ jobs:
           test -f "$extraction/package/package.json"
           test -f "$extraction/package/README.md"
 
-          rm -rf ./dist
-          mkdir -p ./dist
-          cp -a "$extraction/package/dist/." ./dist/
-          cp "$extraction/package/package.json" ./package.json
-          cp "$extraction/package/README.md" ./UPSTREAM_README.md
+          mkdir -p ./upstream/0.1.2
+          cp "$npm_archive" ./upstream/0.1.2/n8n-nodes-bailey-0.1.2.tgz
+          cp "$extraction/package/package.json" ./upstream/0.1.2/package.json
+          cp "$extraction/package/README.md" ./upstream/0.1.2/README.md
+          cp ./LICENSE ./upstream/0.1.2/LICENSE
+          (cd "$extraction/package" && find dist package.json README.md -type f -print0 | sort -z | xargs -0 sha512sum) > ./upstream/0.1.2/CONTENTS.sha512
+          (cd ./upstream/0.1.2 && sha512sum n8n-nodes-bailey-0.1.2.tgz > SHA512SUMS)
+          (cd ./upstream/0.1.2 && sha512sum --check SHA512SUMS)
 
-          if [[ "$(jq -r .name package.json)" != '@jazario/n8n-nodes-bailey' ]] || \
-             [[ "$(jq -r .version package.json)" != '0.1.2' ]]; then
+          if [[ "$(jq -r .name ./upstream/0.1.2/package.json)" != '@jazario/n8n-nodes-bailey' ]] || \
+             [[ "$(jq -r .version ./upstream/0.1.2/package.json)" != '0.1.2' ]]; then
             echo "Unexpected package identity" >&2
             exit 1
           fi
@@ -75,7 +79,7 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- dist package.json UPSTREAM_README.md
+          git add -- upstream/0.1.2
 
           if git diff --cached --quiet; then
             echo "Upstream build already committed."

@@ -1,3 +1,4 @@
-import type { WASocket } from '@whiskeysockets/baileys';
-import type { IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
-export declare function executeBusinessOperation(this: IExecuteFunctions, sock: WASocket, operation: string, i: number): Promise<INodeExecutionData>;
+export { executeBusinessOperation };
+declare function executeBusinessOperation(sock: any, operation: any, i: any): Promise<{
+    json: any;
+}>;

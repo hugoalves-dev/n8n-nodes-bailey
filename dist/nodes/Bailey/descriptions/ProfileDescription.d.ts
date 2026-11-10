@@ -1,3 +1,49 @@
-import type { INodeProperties } from 'n8n-workflow';
-export declare const profileOperations: INodeProperties[];
-export declare const profileFields: INodeProperties[];
+export declare const profileOperations: {
+    displayName: string;
+    name: string;
+    type: string;
+    noDataExpression: boolean;
+    displayOptions: {
+        show: {
+            resource: string[];
+        };
+    };
+    options: {
+        name: string;
+        value: string;
+        action: string;
+    }[];
+    default: string;
+}[];
+export declare const profileFields: ({
+    displayName: string;
+    name: string;
+    type: string;
+    required: boolean;
+    default: string;
+    displayOptions: {
+        show: {
+            resource: string[];
+            operation: string[];
+        };
+    };
+    description: string;
+    options?: undefined;
+} | {
+    displayName: string;
+    name: string;
+    type: string;
+    default: number;
+    displayOptions: {
+        show: {
+            resource: string[];
+            operation: string[];
+        };
+    };
+    options: {
+        name: string;
+        value: number;
+    }[];
+    required?: undefined;
+    description?: undefined;
+})[];

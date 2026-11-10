@@ -1,3 +1,30 @@
-import type { WASocket } from '@whiskeysockets/baileys';
-import type { IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
-export declare function executeProfileOperation(this: IExecuteFunctions, sock: WASocket, operation: string, i: number): Promise<INodeExecutionData>;
+export { executeProfileOperation };
+declare function executeProfileOperation(sock: any, operation: any, i: any): Promise<{
+    json: {
+        success: boolean;
+        status: any;
+        name?: undefined;
+        duration?: undefined;
+    };
+} | {
+    json: {
+        success: boolean;
+        name: any;
+        status?: undefined;
+        duration?: undefined;
+    };
+} | {
+    json: {
+        success: boolean;
+        status?: undefined;
+        name?: undefined;
+        duration?: undefined;
+    };
+} | {
+    json: {
+        success: boolean;
+        duration: any;
+        status?: undefined;
+        name?: undefined;
+    };
+}>;

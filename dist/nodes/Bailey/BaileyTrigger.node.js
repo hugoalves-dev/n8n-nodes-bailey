@@ -1,39 +1,50 @@
+// Reconstructed from the published 0.1.2 JavaScript distribution; original TypeScript was unavailable.
+// @ts-nocheck
 "use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.BaileyTrigger = void 0;
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function (o, m, k, k2) {
+    if (k2 === undefined)
+        k2 = k;
     var desc = Object.getOwnPropertyDescriptor(m, k);
     if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
+        desc = { enumerable: true, get: function () { return m[k]; } };
     }
     Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
+}) : (function (o, m, k, k2) {
+    if (k2 === undefined)
+        k2 = k;
     o[k2] = m[k];
 }));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function (o, v) {
     Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
+}) : function (o, v) {
     o["default"] = v;
 });
 var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
+    var ownKeys = function (o) {
         ownKeys = Object.getOwnPropertyNames || function (o) {
             var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            for (var k in o)
+                if (Object.prototype.hasOwnProperty.call(o, k))
+                    ar[ar.length] = k;
             return ar;
         };
         return ownKeys(o);
     };
     return function (mod) {
-        if (mod && mod.__esModule) return mod;
+        if (mod && mod.__esModule)
+            return mod;
         var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        if (mod != null)
+            for (var k = ownKeys(mod), i = 0; i < k.length; i++)
+                if (k[i] !== "default")
+                    __createBinding(result, mod, k[i]);
         __setModuleDefault(result, mod);
         return result;
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.BaileyTrigger = void 0;
 const baileys_1 = __importStar(require("@whiskeysockets/baileys"));
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
@@ -42,6 +53,8 @@ const n8n_workflow_1 = require("n8n-workflow");
 const AuthStateStore_1 = require("./transport/AuthStateStore");
 const MessageCache_1 = require("./transport/MessageCache");
 const ConnectionPool_1 = require("./transport/ConnectionPool");
+const PairingCoordinator_1 = require("./transport/PairingCoordinator");
+const TransportPolicy_1 = require("./transport/TransportPolicy");
 const ALL_EVENTS = [
     { name: 'Message Received', value: 'messages.upsert', description: 'New or appended messages' },
     { name: 'Message Updated', value: 'messages.update', description: 'Message status, poll votes, edits' },
@@ -154,31 +167,36 @@ class BaileyTrigger {
         this.methods = {
             credentialTest: {
                 async baileyCredentialTest(credential) {
+                    const node = this.getNode();
                     const creds = credential.data;
-                    const { sessionId, authDataPath, authMethod, phoneNumber, browserName, proxyUrl } = creds;
+                    const { sessionId, authDataPath, authMethod, phoneNumber } = creds;
                     const sessionDir = (0, AuthStateStore_1.sessionDirFromConfig)(authDataPath !== null && authDataPath !== void 0 ? authDataPath : '~/.n8n/baileys', sessionId);
                     const credsFile = path.join(sessionDir, 'creds.json');
-                    const isFirstAuth = !fs.existsSync(credsFile);
+                    let isFirstAuth = true;
+                    try {
+                        isFirstAuth = JSON.parse(fs.readFileSync(credsFile, 'utf8')).registered !== true;
+                    }
+                    catch { }
                     return new Promise((resolve) => {
                         let settled = false;
                         let sock;
+                        let connectionUpdateHandler;
+                        let pairingCodeRequested = false;
                         const done = (result) => {
                             var _a, _b;
                             if (settled)
                                 return;
                             settled = true;
                             clearTimeout(timer);
-                            if (result.status !== 'OK' || !isFirstAuth) {
+                            if (sock && connectionUpdateHandler) {
+                                sock.ev.off('connection.update', connectionUpdateHandler);
+                            }
+                            if (result.status !== 'OK') {
                                 try {
                                     sock === null || sock === void 0 ? void 0 : sock.end(undefined);
                                 }
                                 catch { }
-                            }
-                            else {
-                                (_b = (_a = setTimeout(() => { try {
-                                    sock === null || sock === void 0 ? void 0 : sock.end(undefined);
-                                }
-                                catch { } }, 2000)).unref) === null || _b === void 0 ? void 0 : _b.call(_a);
+                                (0, ConnectionPool_1.deregisterSocket)(sessionId);
                             }
                             resolve(result);
                         };
@@ -190,78 +208,69 @@ class BaileyTrigger {
                                     : 'Connection timed out after 60 seconds. Check your network and proxy settings.',
                             });
                         }, 60000);
-                        (0, AuthStateStore_1.useFileAuthState)(sessionDir).then(({ creds: authCreds, keys, saveCreds }) => {
-                            const socketConfig = {
-                                auth: {
-                                    creds: authCreds,
-                                    keys: (0, baileys_1.makeCacheableSignalKeyStore)(keys, undefined),
-                                },
-                                browser: baileys_1.Browsers.ubuntu(browserName !== null && browserName !== void 0 ? browserName : 'n8n'),
-                                syncFullHistory: false,
-                                markOnlineOnConnect: false,
-                                generateHighQualityLinkPreview: false,
-                            };
-                            if (proxyUrl) {
-                                Promise.resolve().then(() => __importStar(require('https-proxy-agent'))).then(({ HttpsProxyAgent }) => {
-                                    socketConfig.agent = new HttpsProxyAgent(proxyUrl);
-                                }).catch(() => { });
+                        (0, ConnectionPool_1.getOrCreateConnection)(creds).then((sharedSocket) => {
+                            if (settled) {
+                                sharedSocket.end(undefined);
+                                (0, ConnectionPool_1.deregisterSocket)(sessionId);
+                                return;
                             }
-                            sock = (0, baileys_1.default)(socketConfig);
-                            sock.ev.on('creds.update', saveCreds);
-                            sock.ev.on('connection.update', (update) => {
+                            sock = sharedSocket;
+                            connectionUpdateHandler = (update) => {
                                 var _a, _b;
                                 const { connection, qr, lastDisconnect } = update;
-                                if (qr) {
+                                if (qr && authMethod === 'qrCode' && !settled) {
                                     QRCode.toDataURL(qr, { width: 300, margin: 2 }).then((dataUrl) => {
                                         done({
-                                            status: 'Error',
+                                            status: 'OK',
                                             message: `<div style="text-align:center">` +
                                                 `<p><b>Scan this QR code in WhatsApp</b></p>` +
                                                 `<p style="color:#888;font-size:12px">WhatsApp → Settings → Linked Devices → Link a Device</p>` +
                                                 `<img src="${dataUrl}" style="width:250px;height:250px;display:block;margin:12px auto" />` +
-                                                `<p style="color:#888;font-size:12px">After scanning, click <b>Test</b> again to confirm the connection.</p>` +
+                                                `<p style="color:#888;font-size:12px">The connection stays open while you scan this code.</p>` +
                                                 `</div>`,
                                         });
                                     }).catch(() => {
                                         done({
                                             status: 'Error',
-                                            message: `QR Code (copy into a QR generator to scan):\n${qr}\n\nAfter scanning, click "Test" again.`,
+                                            message: 'Could not render the WhatsApp QR code. Try the credential test again.',
                                         });
                                     });
                                     return;
                                 }
-                                if (connection === 'open') {
-                                    if (authMethod === 'pairingCode' && isFirstAuth && !authCreds.registered) {
-                                        sock.requestPairingCode(phoneNumber !== null && phoneNumber !== void 0 ? phoneNumber : '').then((code) => {
+                                if (authMethod === 'pairingCode' && isFirstAuth && qr && !pairingCodeRequested) {
+                                    pairingCodeRequested = true;
+                                    const pairingEntry = (0, ConnectionPool_1.getPoolEntry)(sessionId);
+                                    const handlePairingUpdate = (0, PairingCoordinator_1.createPairingCodeHandler)({
+                                        requestCode: () => sock.requestPairingCode((0, TransportPolicy_1.normalizePhoneNumber)(phoneNumber !== null && phoneNumber !== void 0 ? phoneNumber : '')),
+                                        onCode: (code) => {
                                             const formatted = code.length === 8
                                                 ? `${code.slice(0, 4)}-${code.slice(4)}`
                                                 : code;
                                             done({
-                                                status: 'Error',
+                                                status: 'OK',
                                                 message: `<div style="text-align:center">` +
+                                                    `<p><b>Pairing is pending. This credential is not connected until you enter the code.</b></p>` +
                                                     `<p><b>Enter this pairing code in WhatsApp</b></p>` +
                                                     `<p style="color:#888;font-size:12px">WhatsApp → Settings → Linked Devices → Link a Device → Link with phone number</p>` +
                                                     `<p style="font-size:36px;font-weight:bold;letter-spacing:8px;font-family:monospace;margin:16px 0">${formatted}</p>` +
-                                                    `<p style="color:#888;font-size:12px">After entering the code, click <b>Test</b> again to confirm the connection.</p>` +
+                                                    `<p style="color:#888;font-size:12px">The connection stays open while you enter this code.</p>` +
                                                     `</div>`,
                                             });
-                                        }).catch((err) => {
-                                            var _a;
+                                        },
+                                        onError: (message) => {
                                             done({
                                                 status: 'Error',
-                                                message: `Failed to get pairing code: ${(_a = err.message) !== null && _a !== void 0 ? _a : String(err)}`,
+                                                message,
                                             });
-                                        });
-                                    }
-                                    else {
-                                        done({
-                                            status: 'OK',
-                                            message: isFirstAuth
-                                                ? 'WhatsApp linked successfully! Your session has been saved.'
-                                                : 'Successfully connected to WhatsApp',
-                                        });
-                                    }
-                                    return;
+                                        },
+                                        state: pairingEntry === null || pairingEntry === void 0 ? undefined : pairingEntry.pairingState,
+                                    });
+                                    const entry = (0, ConnectionPool_1.getPoolEntry)(sessionId);
+                                    handlePairingUpdate(update, (entry === null || entry === void 0 ? void 0 : entry.authRegistered) === true);
+                                }
+                                const entry = (0, ConnectionPool_1.getPoolEntry)(sessionId);
+                                if (connection === 'open' && (entry === null || entry === void 0 ? void 0 : entry.authRegistered) === true) {
+                                    done({ status: 'OK', message: 'Successfully connected to WhatsApp.' });
                                 }
                                 if (connection === 'close') {
                                     const statusCode = (_b = (_a = lastDisconnect === null || lastDisconnect === void 0 ? void 0 : lastDisconnect.error) === null || _a === void 0 ? void 0 : _a.output) === null || _b === void 0 ? void 0 : _b.statusCode;
@@ -278,12 +287,19 @@ class BaileyTrigger {
                                         });
                                     }
                                 }
-                            });
-                        }).catch((err) => {
-                            var _a;
+                            };
+                            sock.ev.on('connection.update', connectionUpdateHandler);
+                            const entry = (0, ConnectionPool_1.getPoolEntry)(sessionId);
+                            if (entry && entry.connectionState.connection === 'open' && entry.authRegistered) {
+                                connectionUpdateHandler({ connection: 'open' });
+                            }
+                            else if (entry && entry.connectionState.qr) {
+                                connectionUpdateHandler(entry.connectionState);
+                            }
+                        }).catch(() => {
                             done({
                                 status: 'Error',
-                                message: `Failed to load session: ${(_a = err.message) !== null && _a !== void 0 ? _a : String(err)}`,
+                                message: 'Could not initialize the WhatsApp connection. Check the credentials, auth directory permissions, and proxy configuration.',
                             });
                         });
                     });
@@ -296,60 +312,34 @@ class BaileyTrigger {
         const credentials = (await this.getCredentials('baileyApi'));
         const event = this.getNodeParameter('event', 'messages.upsert');
         const options = this.getNodeParameter('options', {});
-        const { sessionId, authDataPath, syncFullHistory, markOnlineOnConnect, browserName, proxyUrl } = credentials;
-        const sessionDir = (0, AuthStateStore_1.sessionDirFromConfig)(authDataPath !== null && authDataPath !== void 0 ? authDataPath : '~/.n8n/baileys', sessionId);
-        const { creds, keys, saveCreds } = await (0, AuthStateStore_1.useFileAuthState)(sessionDir);
-        const messageCache = new MessageCache_1.MessageCache((_a = credentials.messageCacheSize) !== null && _a !== void 0 ? _a : 1000);
-        const socketConfig = {
-            auth: {
-                creds,
-                keys: (0, baileys_1.makeCacheableSignalKeyStore)(keys, undefined),
-            },
-            browser: baileys_1.Browsers.ubuntu(browserName !== null && browserName !== void 0 ? browserName : 'n8n'),
-            syncFullHistory: syncFullHistory !== null && syncFullHistory !== void 0 ? syncFullHistory : false,
-            markOnlineOnConnect: markOnlineOnConnect !== null && markOnlineOnConnect !== void 0 ? markOnlineOnConnect : true,
-            generateHighQualityLinkPreview: true,
-            enableAutoSessionRecreation: true,
-            enableRecentMessageCache: true,
-            getMessage: async (key) => {
-                return messageCache.get(key);
-            },
-        };
-        if (proxyUrl) {
-            try {
-                const { HttpsProxyAgent } = await Promise.resolve().then(() => __importStar(require('https-proxy-agent')));
-                socketConfig.agent = new HttpsProxyAgent(proxyUrl);
-            }
-            catch {
-            }
-        }
-        const sock = (0, baileys_1.default)(socketConfig);
-        sock.ev.on('creds.update', saveCreds);
-        sock.ev.on('messages.upsert', ({ messages }) => {
-            for (const msg of messages) {
-                if (msg.key && msg.message) {
-                    messageCache.set(msg.key, msg.message);
-                }
-            }
-        });
-        (0, ConnectionPool_1.registerExternalSocket)(sessionId, sock, messageCache);
+        const { sessionId } = credentials;
+        const sock = await (0, ConnectionPool_1.getOrCreateConnection)(credentials, true);
+        const poolEntry = (0, ConnectionPool_1.getPoolEntry)(sessionId);
+        const isRegistered = poolEntry === null || poolEntry === void 0 ? false : poolEntry.authRegistered;
         const isPairingCode = credentials.authMethod === 'pairingCode';
-        if (isPairingCode && !creds.registered) {
-            sock.ev.process(async (events) => {
-                var _a;
-                if (events['connection.update']) {
-                    const update = events['connection.update'];
-                    if (update.connection === 'open' && !creds.registered) {
-                        try {
-                            const code = await sock.requestPairingCode(credentials.phoneNumber);
-                            this.logger.info(`[Bailey] Pairing code for ${credentials.phoneNumber}: ${code}`);
-                        }
-                        catch (err) {
-                            this.logger.error(`[Bailey] Failed to get pairing code: ${(_a = err.message) !== null && _a !== void 0 ? _a : String(err)}`);
-                        }
+        if (isPairingCode && !isRegistered && this.getMode() === 'manual') {
+            const handlePairingUpdate = (0, PairingCoordinator_1.createPairingCodeHandler)({
+                requestCode: () => sock.requestPairingCode((0, TransportPolicy_1.normalizePhoneNumber)(credentials.phoneNumber)),
+                onCode: (code) => {
+                    if (this.getMode() === 'manual') {
+                        this.emit([this.helpers.returnJsonArray([{ _event: 'pairing.code', _sessionId: sessionId, pairingCode: code }])]);
                     }
-                }
+                    else {
+                        this.logger.info('[Bailey] Pairing code created. Run the credential test to display it.');
+                    }
+                },
+                onError: (message) => this.logger.error(message),
+                state: poolEntry.pairingState,
             });
+            sock.ev.on('connection.update', (update) => {
+                const registered = (0, ConnectionPool_1.getPoolEntry)(sessionId);
+                handlePairingUpdate(update, registered === null || registered === void 0 ? false : registered.authRegistered);
+            });
+            if (poolEntry && poolEntry.connectionState.qr)
+                handlePairingUpdate(poolEntry.connectionState, poolEntry.authRegistered);
+        }
+        else if (isPairingCode && !isRegistered) {
+            this.logger.info('[Bailey] Authentication is pending. Run the credential test or listen manually to display a pairing code.');
         }
         const emit = (eventName, data) => {
             const payload = {};

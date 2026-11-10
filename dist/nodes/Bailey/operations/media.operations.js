@@ -1,6 +1,9 @@
+// Reconstructed from the published 0.1.2 JavaScript distribution; original TypeScript was unavailable.
+// @ts-nocheck
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.executeMediaOperation = executeMediaOperation;
+Object.defineProperty(exports, "__esModule", { value: true });
 const baileys_1 = require("@whiskeysockets/baileys");
 const n8n_workflow_1 = require("n8n-workflow");
 const noopLogger = {
