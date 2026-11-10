@@ -3,19 +3,51 @@ export interface PairingCodeUpdate {
 	connection?: string;
 }
 
+export interface PairingRequestState {
+	requested: boolean;
+	code?: string;
+	requestPromise?: Promise<string>;
+}
+
 interface PairingCodeHandlerOptions {
 	requestCode: () => Promise<string>;
 	onCode: (code: string) => void;
 	onError: (message: string) => void;
-	state?: { requested: boolean };
+	state?: PairingRequestState;
+}
+
+export function requestPairingCodeOnce(
+	state: PairingRequestState,
+	requestCode: () => Promise<string>,
+): Promise<string> {
+	if (state.code) return Promise.resolve(state.code);
+	if (state.requestPromise) return state.requestPromise;
+
+	state.requested = true;
+	state.requestPromise = requestCode()
+		.then((code) => {
+			state.code = code;
+			return code;
+		})
+		.catch((error: unknown) => {
+			state.requested = false;
+			throw error;
+		})
+		.finally(() => {
+			state.requestPromise = undefined;
+		});
+
+	return state.requestPromise;
 }
 
 export function createPairingCodeHandler({ requestCode, onCode, onError, state }: PairingCodeHandlerOptions) {
 	const requestState = state ?? { requested: false };
+	let delivered = false;
 	return (update: PairingCodeUpdate, registered: boolean): void => {
-		if (registered || requestState.requested || !update.qr) return;
-		requestState.requested = true;
-		void requestCode().then(onCode).catch(() => {
+		if (registered || delivered || requestState.requested || !update.qr) return;
+		delivered = true;
+		void requestPairingCodeOnce(requestState, requestCode).then(onCode).catch(() => {
+			delivered = false;
 			onError('WhatsApp could not create a pairing code. Wait a moment and try again.');
 		});
 	};

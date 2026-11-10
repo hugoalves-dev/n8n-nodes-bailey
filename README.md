@@ -18,7 +18,7 @@ npm run build
 npm pack --dry-run
 ```
 
-All upstream action and trigger operations remain available. Pairing codes are returned as plain text by the credential test, which keeps the unauthenticated socket alive while pairing. For QR authentication, listen manually with Bailey Trigger and use the emitted `auth.qr` output payload; the credential test UI does not render QR images. The trigger shares that socket and requests a pairing code at the pre-authentication QR update. During manual listening, the trigger emits the code as a `pairing.code` event so it is visible in n8n; keep that execution private and remove it after pairing. The code is not written to server logs or auth files.
+All upstream action and trigger operations remain available. Add the Bailey Auth node to a manual workflow and execute it to create or inspect the configured WhatsApp session. Pairing Code mode returns the code as JSON and writes it to the n8n log; QR Code mode returns a PNG image in the binary output. The unauthenticated socket stays alive for up to five minutes while you complete pairing. Pairing codes are short-lived secrets: restrict access to workflow output and n8n logs, and clear them after pairing. The Bailey Trigger continues to emit `pairing.code` during manual listening.
 
 Authentication files are stored below `~/.n8n/baileys/<sessionId>` by default. In Docker, mount the configured auth directory as a persistent volume. The `sessionId` must be a single path segment; use the same value in credentials shared by a trigger and action node. Set **Idle Timeout (Seconds)** to `0` to disable idle cleanup.
 

@@ -39,7 +39,8 @@
     ],
     "nodes": [
       "dist/nodes/Bailey/Bailey.node.js",
-      "dist/nodes/Bailey/BaileyTrigger.node.js"
+      "dist/nodes/Bailey/BaileyTrigger.node.js",
+      "dist/nodes/Bailey/BaileyAuth.node.js"
     ]
   },
   "dependencies": {
