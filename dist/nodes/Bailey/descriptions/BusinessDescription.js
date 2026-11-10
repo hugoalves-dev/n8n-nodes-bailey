@@ -1,0 +1,113 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.businessFields = exports.businessOperations = void 0;
+exports.businessOperations = [
+    {
+        displayName: 'Operation',
+        name: 'operation',
+        type: 'options',
+        noDataExpression: true,
+        displayOptions: { show: { resource: ['business'] } },
+        options: [
+            { name: 'Create Product', value: 'createProduct', action: 'Create a new product' },
+            { name: 'Delete Products', value: 'deleteProducts', action: 'Delete products from catalog' },
+            { name: 'Get Catalog', value: 'getCatalog', action: 'Get business product catalog' },
+            { name: 'Get Collections', value: 'getCollections', action: 'Get product collections' },
+            { name: 'Get Order Details', value: 'getOrderDetails', action: 'Get details of an order' },
+            { name: 'Update Business Profile', value: 'updateProfile', action: 'Update business profile info' },
+            { name: 'Update Cover Photo', value: 'updateCoverPhoto', action: 'Update business cover photo' },
+            { name: 'Update Product', value: 'updateProduct', action: 'Update an existing product' },
+        ],
+        default: 'getCatalog',
+    },
+];
+exports.businessFields = [
+    {
+        displayName: 'Business JID',
+        name: 'jid',
+        type: 'string',
+        default: '',
+        displayOptions: { show: { resource: ['business'], operation: ['getCatalog', 'getCollections'] } },
+        description: 'JID of the business (leave empty for your own)',
+    },
+    {
+        displayName: 'Limit',
+        name: 'limit',
+        type: 'number',
+        typeOptions: {
+            minValue: 1,
+        },
+        description: 'Max number of results to return',
+        default: 50,
+        displayOptions: { show: { resource: ['business'], operation: ['getCatalog', 'getCollections'] } },
+    },
+    {
+        displayName: 'Cursor',
+        name: 'cursor',
+        type: 'string',
+        default: '',
+        displayOptions: { show: { resource: ['business'], operation: ['getCatalog'] } },
+        description: 'Pagination cursor from previous response',
+    },
+    {
+        displayName: 'Order ID',
+        name: 'orderId',
+        type: 'string',
+        required: true,
+        default: '',
+        displayOptions: { show: { resource: ['business'], operation: ['getOrderDetails'] } },
+    },
+    {
+        displayName: 'Order Token (Base64)',
+        name: 'orderToken',
+        type: 'string',
+        typeOptions: { password: true },
+        required: true,
+        default: '',
+        displayOptions: { show: { resource: ['business'], operation: ['getOrderDetails'] } },
+    },
+    {
+        displayName: 'Product Data (JSON)',
+        name: 'productData',
+        type: 'json',
+        required: true,
+        default: '{}',
+        displayOptions: { show: { resource: ['business'], operation: ['createProduct', 'updateProduct'] } },
+        description: 'Product object (name, retailerId, URL, priceAmount1000, priceCurrencyIso4217, isHidden, description, images)',
+    },
+    {
+        displayName: 'Product ID',
+        name: 'productId',
+        type: 'string',
+        required: true,
+        default: '',
+        displayOptions: { show: { resource: ['business'], operation: ['updateProduct'] } },
+    },
+    {
+        displayName: 'Product IDs',
+        name: 'productIds',
+        type: 'string',
+        required: true,
+        default: '',
+        displayOptions: { show: { resource: ['business'], operation: ['deleteProducts'] } },
+        description: 'Comma-separated list of product IDs to delete',
+    },
+    {
+        displayName: 'Business Profile Data (JSON)',
+        name: 'profileData',
+        type: 'json',
+        required: true,
+        default: '{}',
+        displayOptions: { show: { resource: ['business'], operation: ['updateProfile'] } },
+        description: 'Business profile fields to update (description, email, category, etc.)',
+    },
+    {
+        displayName: 'Cover Photo URL or Binary Property',
+        name: 'coverPhotoSource',
+        type: 'string',
+        required: true,
+        default: '',
+        displayOptions: { show: { resource: ['business'], operation: ['updateCoverPhoto'] } },
+    },
+];
+//# sourceMappingURL=BusinessDescription.js.map
