@@ -18,7 +18,7 @@ class BaileyApi {
                 type: 'string',
                 default: 'default',
                 required: true,
-                description: 'Unique identifier for this WhatsApp session. Use the same ID in your Trigger and Action nodes to share the connection',
+                description: 'Unique identifier for this WhatsApp session. Use the same ID in your Trigger and Action nodes to share the connection.',
                 placeholder: 'my-whatsapp-session',
             },
             {
@@ -44,7 +44,7 @@ class BaileyApi {
                     {
                         name: 'QR Code',
                         value: 'qrCode',
-                        description: 'The credential test confirms QR is ready; listen manually with Bailey Trigger to receive the QR payload in its output, then scan it in WhatsApp > Linked Devices.',
+                        description: 'The credential test confirms QR is ready; listen manually with Bailey Trigger to receive the QR payload in its output, then scan it in WhatsApp > Linked Devices',
                     },
                 ],
             },
