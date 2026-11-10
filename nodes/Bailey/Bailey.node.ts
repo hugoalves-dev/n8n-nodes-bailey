@@ -55,7 +55,6 @@ class Bailey {
                 {
                     name: 'baileyApi',
                     required: true,
-                    testedBy: 'baileyCredentialTest',
                 },
             ],
             properties: [

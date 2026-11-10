@@ -39,12 +39,12 @@ class BaileyApi {
                     {
                         name: 'Pairing Code (Recommended)',
                         value: 'pairingCode',
-                        description: 'Generates a 8-digit code to enter in WhatsApp > Linked Devices > Link with phone number',
+                        description: 'The credential test returns the code as text. Keep the test open while pairing; manual trigger listening also emits an auth event with the code.',
                     },
                     {
                         name: 'QR Code',
                         value: 'qrCode',
-                        description: 'Generates a QR code — activate a Bailey Trigger node and check the n8n server logs to scan it',
+                        description: 'The credential test confirms QR is ready; listen manually with Bailey Trigger to receive the QR payload in its output, then scan it in WhatsApp > Linked Devices.',
                     },
                 ],
             },

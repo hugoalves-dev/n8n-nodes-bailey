@@ -296,6 +296,19 @@ class BaileyTrigger {
         const poolEntry = (0, ConnectionPool_1.getPoolEntry)(sessionId);
         const isRegistered = poolEntry === null || poolEntry === void 0 ? false : poolEntry.authRegistered;
         const isPairingCode = credentials.authMethod === 'pairingCode';
+        if (!isRegistered && credentials.authMethod === 'qrCode' && this.getMode() === 'manual') {
+            const qrHandler = (update) => {
+                if (update.qr && this.getMode() === 'manual') {
+                    this.emit([this.helpers.returnJsonArray([{
+                        _event: 'auth.qr',
+                        _sessionId: sessionId,
+                        qrCode: update.qr,
+                        instructions: 'Scan in WhatsApp → Settings → Linked Devices → Link a Device.',
+                    }])]);
+                }
+            };
+            sock.ev.on('connection.update', qrHandler);
+        }
         if (isPairingCode && !isRegistered && this.getMode() === 'manual') {
             const handlePairingUpdate = (0, PairingCoordinator_1.createPairingCodeHandler)({
                 requestCode: () => sock.requestPairingCode((0, TransportPolicy_1.normalizePhoneNumber)(credentials.phoneNumber)),
