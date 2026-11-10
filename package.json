@@ -1,6 +1,6 @@
 {
   "name": "@hugoalves-dev/n8n-nodes-bailey",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "n8n community nodes for Baileys (WhiskeySockets) WhatsApp Web API",
   "license": "MIT",
   "homepage": "https://github.com/hugoalves-dev/n8n-nodes-bailey",
