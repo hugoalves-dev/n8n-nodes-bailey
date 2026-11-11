@@ -27,7 +27,7 @@ class BaileyAuth implements INodeType {
 				options: [
 					{ name: 'Start Pairing', value: 'startPairing', description: 'Return a code or QR without waiting for authentication', action: 'Return a code or QR without waiting for authentication' },
 					{ name: 'Check Status', value: 'checkStatus', description: 'Inspect the active connection without requesting a code', action: 'Inspect the active connection without requesting a code' },
-					{ name: 'Wait for Authentication', value: 'waitForAuthentication', description: 'Legacy mode: wait for success or failure and log the prompt', action: 'Legacy mode: wait for success or failure and log the prompt' },
+					{ name: 'Wait for Authentication', value: 'waitForAuthentication', description: 'Legacy mode: wait for success or failure and log the prompt', action: 'Wait for success or failure and log the prompt' },
 				],
 			},
 			{
