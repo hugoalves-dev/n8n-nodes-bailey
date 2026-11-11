@@ -19,6 +19,21 @@ function createEntry() {
 }
 
 describe('waitForAuthPrompt', () => {
+	it('returns a pairing code without waiting for authentication', async () => {
+		const socket = createSocket();
+		const entry = createEntry();
+		entry.socket = socket;
+		const resultPromise = waitForAuthPrompt({
+			socket, getEntry: () => entry, authMethod: 'pairingCode',
+			phoneNumber: '15551234567', timeoutMs: 100, returnOnPrompt: true,
+			onPrompt: jest.fn(),
+		});
+		socket.ev.emit('connection.update', { qr: 'qr-payload' });
+		expect(await resultPromise).toEqual({ status: 'pairingCode', pairingCode: '12345678' });
+		expect(entry.authRegistered).toBe(false);
+		expect(socket.ev.listenerCount('connection.update')).toBe(0);
+	});
+
 	it('delivers a pairing code then waits for auth and removes listeners', async () => {
 		const socket = createSocket();
 		const entry = createEntry();
@@ -37,6 +52,7 @@ describe('waitForAuthPrompt', () => {
 		await new Promise((resolve) => setImmediate(resolve));
 		expect(onPrompt).toHaveBeenCalledWith({ status: 'pairingCode', pairingCode: '12345678' });
 		entry.authRegistered = true;
+		entry.connectionState.connection = 'open';
 		socket.ev.emit('creds.update');
 		const result = await resultPromise;
 
@@ -57,6 +73,7 @@ describe('waitForAuthPrompt', () => {
 		socket.ev.emit('connection.update', { qr: 'qr-payload' });
 		await new Promise((resolve) => setImmediate(resolve));
 		entry.authRegistered = true;
+		entry.connectionState.connection = 'open';
 		socket.ev.emit('creds.update');
 
 		const results = await Promise.all([first, second]);
@@ -167,13 +184,14 @@ describe('waitForAuthPrompt', () => {
 		await new Promise((resolve) => setImmediate(resolve));
 		expect(newPrompt).toHaveBeenCalledWith({ status: 'pairingCode', pairingCode: '87654321' });
 		newEntry.authRegistered = true;
+		newEntry.connectionState.connection = 'open';
 		newSocket.ev.emit('creds.update');
 		expect(await newResult).toEqual({ status: 'authenticated' });
 	});
 
 	it('reports an authenticated session immediately', async () => {
 		const socket = createSocket();
-		const entry = { ...createEntry(), authRegistered: true };
+		const entry = { ...createEntry(), authRegistered: true, connectionState: { connection: 'open' } };
 
 		await expect(waitForAuthPrompt({ socket, getEntry: () => entry, authMethod: 'pairingCode', timeoutMs: 100, onPrompt: jest.fn() }))
 			.resolves.toEqual({ status: 'authenticated' });
