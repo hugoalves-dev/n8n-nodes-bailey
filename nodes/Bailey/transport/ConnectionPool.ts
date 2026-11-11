@@ -68,7 +68,7 @@ async function getOrCreateConnection(credentials, keepAlive = false) {
     }
     const pending = pendingConnections.get(sessionId);
     if (pending) return pending;
-    const connection = createConnection(credentials, (0, TransportPolicy_1.getIdleTimeoutMs)(idleTimeoutSeconds), messageCacheSize !== null && messageCacheSize !== void 0 ? messageCacheSize : 1000);
+    const connection = createConnection(credentials, (0, TransportPolicy_1.getIdleTimeoutMs)(idleTimeoutSeconds), messageCacheSize !== null && messageCacheSize !== void 0 ? messageCacheSize : 1000, keepAlive);
     pendingConnections.set(sessionId, connection);
     try {
         return await connection;
@@ -77,7 +77,7 @@ async function getOrCreateConnection(credentials, keepAlive = false) {
         pendingConnections.delete(sessionId);
     }
 }
-async function createConnection(credentials, idleTimeoutMs, cacheSize) {
+async function createConnection(credentials, idleTimeoutMs, cacheSize, keepAlive = false) {
     const { sessionId, authDataPath, syncFullHistory, markOnlineOnConnect, browserName, proxyUrl } = credentials;
     const sessionDir = (0, AuthStateStore_1.sessionDirFromConfig)(authDataPath !== null && authDataPath !== void 0 ? authDataPath : '~/.n8n/baileys', sessionId);
     const { creds, keys, saveCreds } = await (0, AuthStateStore_1.useFileAuthState)(sessionDir);
@@ -162,14 +162,14 @@ async function createConnection(credentials, idleTimeoutMs, cacheSize) {
         socket: sock,
         messageCache,
         lastUsed: Date.now(),
-        idleTimer: creds.registered ? scheduleIdle(sessionId, idleTimeoutMs) : null,
+        idleTimer: creds.registered && !keepAlive ? scheduleIdle(sessionId, idleTimeoutMs) : null,
         authTimer: creds.registered ? null : scheduleAuthTimeout(sessionId, sock),
         sessionId,
         connectionState: {},
         authRegistered: creds.registered === true,
         authenticationTimedOut: false,
         pairingState: { requested: false },
-        keepAlive: false,
+        keepAlive,
     };
     pool.set(sessionId, entry);
     return sock;
