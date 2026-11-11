@@ -12,14 +12,26 @@ class BaileyAuth implements INodeType {
 		icon: { light: 'file:bailey.svg', dark: 'file:bailey.dark.svg' },
 		group: ['input'],
 		version: 1,
-		description: 'Keep a WhatsApp session alive through pairing and report the authentication result',
+		description: 'Return a pairing code or QR immediately, or inspect the current session',
 		defaults: { name: 'Bailey Auth' },
 		inputs: [NodeConnectionTypes.Main],
 		outputs: [NodeConnectionTypes.Main],
 		credentials: [{ name: 'baileyApi', required: true }],
 		properties: [
 			{
-				displayName: 'This node stays active until authentication succeeds or fails. Find the temporary prompt in execution logs and restrict log access.',
+				displayName: 'Operation',
+				name: 'operation',
+				type: 'options',
+				noDataExpression: true,
+				default: 'startPairing',
+				options: [
+					{ name: 'Start Pairing', value: 'startPairing', description: 'Return a code or QR without waiting for authentication', action: 'Return a code or QR without waiting for authentication' },
+					{ name: 'Check Status', value: 'checkStatus', description: 'Inspect the active connection without requesting a code', action: 'Inspect the active connection without requesting a code' },
+					{ name: 'Wait for Authentication', value: 'waitForAuthentication', description: 'Legacy mode: wait for success or failure and log the prompt', action: 'Wait for success or failure and log the prompt' },
+				],
+			},
+			{
+				displayName: 'Pairing codes and QR codes are secrets stored in execution data. Protect execution history. Start Pairing requires a long-lived n8n process.',
 				name: 'authenticationNotice',
 				type: 'notice',
 				default: '',
@@ -28,11 +40,19 @@ class BaileyAuth implements INodeType {
 	};
 
 	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
+		const operation = this.getNodeParameter('operation', 0, 'startPairing') as string;
 		const credentials = await this.getCredentials('baileyApi');
 		const sessionId = String(credentials.sessionId ?? 'default');
 		const authMethod = String(credentials.authMethod ?? 'pairingCode');
 		const phoneNumber = normalizePhoneNumber(String(credentials.phoneNumber ?? ''));
-		const socket = await getOrCreateConnection(credentials as never);
+		if (operation === 'checkStatus') {
+			const entry = getPoolEntry(sessionId);
+			const connection = entry?.connectionState?.connection ?? 'unknown';
+			const authenticated = entry?.authRegistered === true && connection === 'open';
+			return [[{ json: { sessionId, authenticated, authStatus: authenticated ? 'authenticated' : 'pending', connection } }]];
+		}
+
+		const socket = await getOrCreateConnection(credentials as never, operation === 'startPairing');
 		let promptActive = true;
 		const isSocketActive = () => {
 			const entry = getPoolEntry(sessionId);
@@ -44,8 +64,9 @@ class BaileyAuth implements INodeType {
 			authMethod,
 			phoneNumber,
 			timeoutMs: 300_000,
+			returnOnPrompt: operation === 'startPairing',
 			onPrompt: (prompt) => {
-				if (!promptActive || !isSocketActive()) return;
+				if (operation === 'startPairing' || !promptActive || !isSocketActive()) return;
 				if (prompt.status === 'pairingCode') {
 					const code = prompt.pairingCode.length === 8
 						? `${prompt.pairingCode.slice(0, 4)}-${prompt.pairingCode.slice(4)}`
@@ -69,7 +90,16 @@ class BaileyAuth implements INodeType {
 			},
 		};
 
-		if (result.status === 'authenticated') {
+		if (result.status === 'pairingCode') {
+			item.json.pairingCode = result.pairingCode.length === 8
+				? `${result.pairingCode.slice(0, 4)}-${result.pairingCode.slice(4)}`
+				: result.pairingCode;
+			item.json.message = 'Enter this code under WhatsApp Linked Devices, then execute Check Status. The socket stays alive for up to five minutes.';
+		} else if (result.status === 'qrCode') {
+			const qrBuffer = await QRCode.toBuffer(result.qr, { width: 300, margin: 2 });
+			item.binary = { qrCode: await this.helpers.prepareBinaryData(qrBuffer, 'bailey-pairing.png', 'image/png') };
+			item.json.message = 'Scan the QR from the Binary tab, then execute Check Status.';
+		} else if (result.status === 'authenticated') {
 			item.json.message = 'The WhatsApp session is authenticated.';
 		} else if (result.status === 'timeout') {
 			item.json.message = 'Authentication did not complete within five minutes. The prompt has expired; run this node again for a fresh prompt.';

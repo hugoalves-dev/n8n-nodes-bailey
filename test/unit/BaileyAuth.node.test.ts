@@ -19,9 +19,10 @@ jest.mock('qrcode', () => ({
 import { BaileyAuth } from '../../nodes/Bailey/BaileyAuth.node';
 
 describe('Bailey Auth node output', () => {
-	const execute = async (authMethod: string) => {
+	const execute = async (authMethod: string, operation = 'waitForAuthentication') => {
 		const node = new BaileyAuth() as unknown as { execute: (this: unknown) => Promise<unknown[][]> };
 		const context = {
+			getNodeParameter: jest.fn().mockReturnValue(operation),
 			getCredentials: jest.fn().mockResolvedValue({
 				sessionId: 'test-session', authMethod, phoneNumber: '15551234567',
 			}),
@@ -35,6 +36,41 @@ describe('Bailey Auth node output', () => {
 	beforeEach(() => {
 		jest.clearAllMocks();
 		mockQrToString.mockResolvedValue('terminal-qr');
+		mockQrToBuffer.mockResolvedValue(Buffer.from('png'));
+	});
+
+	it('returns the pairing code promptly and keeps the socket alive', async () => {
+		const socket = {};
+		mockGetOrCreateConnection.mockResolvedValue(socket);
+		mockGetPoolEntry.mockReturnValue({ socket, connectionState: {} });
+		mockWaitForAuthPrompt.mockResolvedValue({ status: 'pairingCode', pairingCode: '12345678' });
+		const { result, context } = await execute('pairingCode', 'startPairing');
+		const item = result[0][0] as { json: Record<string, unknown> };
+
+		expect(mockGetOrCreateConnection).toHaveBeenCalledWith(expect.anything(), true);
+		expect(mockWaitForAuthPrompt).toHaveBeenCalledWith(expect.objectContaining({ returnOnPrompt: true }));
+		expect(item.json).toMatchObject({ authenticated: false, authStatus: 'pairingCode', pairingCode: '1234-5678' });
+		expect(context.logger.info).not.toHaveBeenCalled();
+	});
+
+	it('returns a scannable QR in the Binary tab', async () => {
+		const socket = {};
+		mockGetOrCreateConnection.mockResolvedValue(socket);
+		mockGetPoolEntry.mockReturnValue({ socket, connectionState: {} });
+		mockWaitForAuthPrompt.mockResolvedValue({ status: 'qrCode', qr: 'qr-payload' });
+		const { result } = await execute('qrCode', 'startPairing');
+		const item = result[0][0] as { json: Record<string, unknown>; binary?: unknown };
+
+		expect(item.json.authStatus).toBe('qrCode');
+		expect(mockQrToBuffer).toHaveBeenCalledWith('qr-payload', expect.anything());
+		expect(item.binary).toEqual({ qrCode: { mimeType: 'image/png', fileName: 'bailey-qr.png' } });
+	});
+
+	it('checks connection state without creating another socket', async () => {
+		mockGetPoolEntry.mockReturnValue({ authRegistered: true, connectionState: { connection: 'open' } });
+		const { result } = await execute('pairingCode', 'checkStatus');
+		expect(result[0][0]).toMatchObject({ json: { authenticated: true, authStatus: 'authenticated', connection: 'open' } });
+		expect(mockGetOrCreateConnection).not.toHaveBeenCalled();
 	});
 
 	it('logs a live pairing code and returns only the final auth state', async () => {

@@ -30,6 +30,7 @@ export type AuthPrompt =
 	| { status: 'qrCode'; qr: string };
 
 export type AuthPromptResult =
+	| AuthPrompt
 	| { status: 'authenticated' }
 	| { status: 'timeout' }
 	| { status: 'error'; message: string; statusCode?: number; reason?: string };
@@ -40,6 +41,7 @@ interface WaitForAuthPromptOptions {
 	authMethod: string;
 	phoneNumber?: string;
 	timeoutMs: number;
+	returnOnPrompt?: boolean;
 	onPrompt: (prompt: AuthPrompt) => void | Promise<void>;
 }
 
@@ -70,6 +72,7 @@ export function waitForAuthPrompt({
 	authMethod,
 	phoneNumber = '',
 	timeoutMs,
+	returnOnPrompt = false,
 	onPrompt,
 }: WaitForAuthPromptOptions): Promise<AuthPromptResult> {
 	return new Promise((resolve) => {
@@ -95,14 +98,16 @@ export function waitForAuthPrompt({
 			promptDelivered = true;
 			promptDelivery = Promise.resolve().then(async () => {
 				if (!settled) await onPrompt(prompt);
+				if (returnOnPrompt && !settled) finish(prompt);
 			}).catch(() => finish({ status: 'error', message: 'The authentication prompt could not be displayed.' }));
 		};
 		const onCredentialsUpdate = () => {
-			if (getEntry()?.authRegistered) finishAuthenticated();
+			const entry = getEntry();
+			if (entry?.authRegistered && entry.connectionState.connection === 'open') finishAuthenticated();
 		};
 		const onConnectionUpdate = (update: ConnectionUpdate = {}) => {
 			const entry = getEntry();
-			if (entry?.authRegistered) {
+			if (entry?.authRegistered && (update.connection === 'open' || entry.connectionState.connection === 'open')) {
 				finishAuthenticated();
 				return;
 			}
@@ -142,7 +147,7 @@ export function waitForAuthPrompt({
 		socket.ev.on('creds.update', onCredentialsUpdate);
 
 		const entry = getEntry();
-		if (entry?.authRegistered) finishAuthenticated();
+		if (entry?.authRegistered && entry.connectionState.connection === 'open') finishAuthenticated();
 		else if (entry?.connectionState.connection === 'close') finish(connectionError(entry.connectionState));
 		else if (entry?.connectionState.qr) onConnectionUpdate(entry.connectionState);
 	});

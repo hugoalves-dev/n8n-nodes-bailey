@@ -63,6 +63,21 @@ describe('getOrCreateConnection', () => {
 		deregisterSocket(triggerCredentials.sessionId);
 	});
 
+	it('preserves keep-alive when reconnecting after restartRequired', async () => {
+		jest.useFakeTimers();
+		try {
+			await getOrCreateConnection(credentials as never, true);
+			const close = mockSocket.ev.on.mock.calls.find(([event]) => event === 'connection.update')?.[1] as
+				((update: { connection: string; lastDisconnect?: unknown }) => void);
+			close({ connection: 'close', lastDisconnect: { error: { output: { statusCode: 515 } } } });
+			await jest.advanceTimersByTimeAsync(3001);
+			expect(getPoolEntry(credentials.sessionId)?.keepAlive).toBe(true);
+			expect(getPoolEntry(credentials.sessionId)?.idleTimer).toBeNull();
+		} finally {
+			jest.useRealTimers();
+		}
+	});
+
 	it('ignores a late close from a replaced socket for the same session', async () => {
 		await getOrCreateConnection(credentials as never);
 		const oldCloseHandler = mockSocket.ev.on.mock.calls.find(([event]) => event === 'connection.update')?.[1] as

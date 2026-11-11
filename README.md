@@ -18,7 +18,9 @@ npm run build
 npm pack --dry-run
 ```
 
-All upstream action and trigger operations remain available. Add the Bailey Auth node to a manual workflow and execute it to create or inspect the configured WhatsApp session. The node stays running while you pair: Pairing Code mode writes the temporary code to the execution log, and QR Code mode writes a terminal QR there. The final node output reports `authenticated: true` after success or includes the available disconnect status and reason on failure. The unauthenticated socket and prompt stay alive for up to five minutes. Pairing codes and QR prompts are short-lived secrets: restrict access to n8n execution logs and clear them after pairing. The Bailey Trigger continues to emit `pairing.code` during manual listening.
+All upstream action and trigger operations remain available. Add **Bailey Auth** to a manual workflow. The default **Start Pairing** operation returns the pairing code immediately in the JSON output, or a scannable QR image in the Binary tab. The WebSocket stays alive for up to five minutes while you pair; use **Check Status** to verify a registered, open connection. **Wait for Authentication** preserves the old blocking/logging behavior. Pairing codes and QR images are temporary secrets: restrict execution history and logs, and clear them after pairing. The Bailey Trigger continues to emit `pairing.code` during manual listening.
+
+The connection pool is process-local; Start Pairing and Check Status must run in the same long-lived n8n process. Independent queue workers cannot share that pool. A `401/loggedOut` indicates a rejected session requiring fresh pairing, not an automatic retry; isolate or back up the previous session first. After successful pairing, `515/restartRequired` normally requires recreating the socket with saved credentials; keep-alive now survives that reconnection. Live WhatsApp integration testing is still required.
 
 Authentication files are stored below `~/.n8n/baileys/<sessionId>` by default. In Docker, mount the configured auth directory as a persistent volume. The `sessionId` must be a single path segment; use the same value in credentials shared by a trigger and action node. Set **Idle Timeout (Seconds)** to `0` to disable idle cleanup.
 
@@ -37,7 +39,7 @@ MIT. See [LICENSE](LICENSE) and the preserved original npm distribution under `u
 
 ## Publishing to npm
 
-The GitHub Actions release workflow publishes `@hugoalves-dev/n8n-nodes-bailey` when a version tag (`vX.Y.Z`) is pushed. It runs lint, type-checking, tests, build, and `npm pack --dry-run`, then verifies that the tag matches `package.json` before publishing. Releases use npm Trusted Publishing (GitHub OIDC); no npm token or GitHub secret is required. npm also creates provenance for this trusted publish.
+When a changed `package.json` is merged into `main`, `.github/workflows/release-on-main.yml` creates the matching `vX.Y.Z` GitHub release and dispatches `publish-npm.yml` on that tag. The npm workflow runs lint, type-checking, tests, build, and `npm pack --dry-run`, then verifies that the tag matches `package.json` before publishing. Releases use npm Trusted Publishing (GitHub OIDC); no npm token or GitHub secret is required. npm also creates provenance for this trusted publish.
 
 ### One-time npm setup
 
@@ -48,11 +50,6 @@ The GitHub Actions release workflow publishes `@hugoalves-dev/n8n-nodes-bailey` 
 
 ### Releasing a version
 
-Update `version` in both `package.json` and `package-lock.json`, commit and push that change, then create and push the matching tag. For example, if the package version is `0.2.1`:
+Update `version` in both `package.json` and `package-lock.json`, validate the pull request CI, then merge to `main`. The version-bump workflow creates the GitHub release and dispatches trusted npm publishing. The npm workflow rejects a tag when its version does not match `package.json`. Check the **Actions** tab for both the release and publish runs.
 
-```sh
-git tag v0.2.1
-git push origin v0.2.1
-```
-
-The workflow rejects a tag when its version does not match `package.json`. Check the **Actions** tab for the validation and publish result.
+If automatic publishing needs to be recovered, run **Publish to npm** manually on the existing version tag via GitHub Actions. Do not re-publish an already published npm version.

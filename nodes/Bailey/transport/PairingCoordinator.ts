@@ -6,6 +6,7 @@ export interface PairingCodeUpdate {
 export interface PairingRequestState {
 	requested: boolean;
 	code?: string;
+	codeExpiresAt?: number;
 	requestPromise?: Promise<string>;
 }
 
@@ -20,13 +21,15 @@ export function requestPairingCodeOnce(
 	state: PairingRequestState,
 	requestCode: () => Promise<string>,
 ): Promise<string> {
-	if (state.code) return Promise.resolve(state.code);
+	if (state.code && state.codeExpiresAt && Date.now() < state.codeExpiresAt) return Promise.resolve(state.code);
 	if (state.requestPromise) return state.requestPromise;
 
+	state.code = undefined;
 	state.requested = true;
 	state.requestPromise = requestCode()
 		.then((code) => {
 			state.code = code;
+			state.codeExpiresAt = Date.now() + 60_000;
 			return code;
 		})
 		.catch((error: unknown) => {
@@ -44,7 +47,7 @@ export function createPairingCodeHandler({ requestCode, onCode, onError, state }
 	const requestState = state ?? { requested: false };
 	let delivered = false;
 	return (update: PairingCodeUpdate, registered: boolean): void => {
-		if (registered || delivered || requestState.requested || !update.qr) return;
+		if (registered || delivered || !update.qr) return;
 		delivered = true;
 		void requestPairingCodeOnce(requestState, requestCode).then(onCode).catch(() => {
 			delivered = false;
