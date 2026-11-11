@@ -47,8 +47,14 @@ const pool = new Map();
 const DEFAULT_IDLE_TIMEOUT_MS = 30000;
 const AUTHENTICATION_TIMEOUT_MS = 5 * 60 * 1000;
 const pendingConnections = new Map();
+const reconnectTimers = new Map();
 async function getOrCreateConnection(credentials, keepAlive = false) {
     const { sessionId, messageCacheSize, idleTimeoutSeconds } = credentials;
+    const scheduledReconnect = reconnectTimers.get(sessionId);
+    if (scheduledReconnect) {
+        clearTimeout(scheduledReconnect);
+        reconnectTimers.delete(sessionId);
+    }
     const existing = pool.get(sessionId);
     if (existing) {
         if (existing.idleTimer)
@@ -123,23 +129,28 @@ async function createConnection(credentials, idleTimeoutMs, cacheSize) {
     sock.ev.on('connection.update', (update) => {
         var _a, _b, _c;
         const entry = pool.get(sessionId);
-        if (entry) {
+        if (entry && entry.socket === sock) {
             entry.connectionState = { ...entry.connectionState, ...update };
         }
         const { connection, lastDisconnect } = update;
         if (connection === 'close') {
             const currentEntry = pool.get(sessionId);
-            if (!currentEntry) return;
+            if (!currentEntry || currentEntry.socket !== sock) return;
             if (currentEntry && currentEntry.authTimer) clearTimeout(currentEntry.authTimer);
             if (currentEntry.idleTimer) clearTimeout(currentEntry.idleTimer);
             const statusCode = (_b = (_a = lastDisconnect === null || lastDisconnect === void 0 ? void 0 : lastDisconnect.error) === null || _a === void 0 ? void 0 : _a.output) === null || _b === void 0 ? void 0 : _b.statusCode;
             const shouldReconnect = statusCode !== baileys_1.DisconnectReason.loggedOut && !(currentEntry === null || currentEntry === void 0 ? void 0 : currentEntry.authenticationTimedOut);
             if (shouldReconnect) {
                 pool.delete(sessionId);
+                const previousTimer = reconnectTimers.get(sessionId);
+                if (previousTimer) clearTimeout(previousTimer);
                 const t = setTimeout(() => {
+                    reconnectTimers.delete(sessionId);
+                    if (pool.has(sessionId)) return;
                     getOrCreateConnection(credentials).catch(() => {
                     });
                 }, 3000);
+                reconnectTimers.set(sessionId, t);
                 (_c = t.unref) === null || _c === void 0 ? void 0 : _c.call(t);
             }
             else {
@@ -218,6 +229,11 @@ function registerExternalSocket(sessionId, sock, messageCache, authCreds, idleTi
     return sock;
 }
 function deregisterSocket(sessionId) {
+    const reconnectTimer = reconnectTimers.get(sessionId);
+    if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimers.delete(sessionId);
+    }
     const entry = pool.get(sessionId);
     if (entry) {
         if (entry.idleTimer)
