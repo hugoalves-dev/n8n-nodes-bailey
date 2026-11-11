@@ -1,0 +1,42 @@
+name: Release on main version bump
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - package.json
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: bailey-version-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Create GitHub release and dispatch trusted npm publishing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          tag="v${version}"
+
+          # Publishing is idempotent: reruns cannot republish an existing version.
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag already exists; not dispatching another npm publication."
+            exit 0
+          fi
+
+          gh release create "$tag" --target "$GITHUB_SHA" --title "$tag" --generate-notes
+          # A tag created by GITHUB_TOKEN does not trigger push-tag workflows.
+          # workflow_dispatch is explicitly permitted to trigger another workflow.
+          gh workflow run publish-npm.yml --ref "$tag"
+          echo "Dispatched trusted npm publishing for $tag."
