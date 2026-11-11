@@ -133,8 +133,10 @@ async function createConnection(credentials, idleTimeoutMs, cacheSize, keepAlive
             }
         }
     });
+    let initialConnectionState = {};
     sock.ev.on('connection.update', (update) => {
         var _a, _b, _c;
+        initialConnectionState = { ...initialConnectionState, ...update };
         const entry = pool.get(sessionId);
         // Ignore events from replaced sockets.
         if (!entry || entry.socket !== sock) return;
@@ -189,7 +191,7 @@ async function createConnection(credentials, idleTimeoutMs, cacheSize, keepAlive
         idleTimer: creds.registered && !keepAlive ? scheduleIdle(sessionId, idleTimeoutMs) : null,
         authTimer: creds.registered ? null : scheduleAuthTimeout(sessionId, sock),
         sessionId,
-        connectionState: {},
+        connectionState: { ...initialConnectionState },
         authRegistered: creds.registered === true,
         authenticationTimedOut: false,
         pairingState: { requested: false },
