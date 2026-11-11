@@ -79,7 +79,7 @@ describe('requestPairingCodeOnce', () => {
 	});
 
 	it('refreshes an expired code instead of replaying it', async () => {
-		const state = { requested: false };
+		const state: { requested: boolean; codeExpiresAt?: number; code?: string } = { requested: false };
 		const requestCode = jest.fn().mockResolvedValueOnce('12345678').mockResolvedValueOnce('87654321');
 		await requestPairingCodeOnce(state, requestCode);
 		state.codeExpiresAt = Date.now() - 1;
