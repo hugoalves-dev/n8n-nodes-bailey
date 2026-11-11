@@ -36,6 +36,7 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 export { getOrCreateConnection };
+export { waitForConnectionOpen };
 export { registerExternalSocket };
 export { deregisterSocket };
 export { getPoolEntry };
@@ -132,8 +133,10 @@ async function createConnection(credentials, idleTimeoutMs, cacheSize, keepAlive
             }
         }
     });
+    let initialConnectionState = {};
     sock.ev.on('connection.update', (update) => {
         var _a, _b, _c;
+        initialConnectionState = { ...initialConnectionState, ...update };
         const entry = pool.get(sessionId);
         // Ignore events from replaced sockets.
         if (!entry || entry.socket !== sock) return;
@@ -188,7 +191,7 @@ async function createConnection(credentials, idleTimeoutMs, cacheSize, keepAlive
         idleTimer: creds.registered && !keepAlive ? scheduleIdle(sessionId, idleTimeoutMs) : null,
         authTimer: creds.registered ? null : scheduleAuthTimeout(sessionId, sock),
         sessionId,
-        connectionState: {},
+        connectionState: { ...initialConnectionState },
         authRegistered: creds.registered === true,
         authenticationTimedOut: false,
         pairingState: { requested: false },
@@ -265,6 +268,50 @@ function deregisterSocket(sessionId) {
             clearTimeout(entry.authTimer);
         pool.delete(sessionId);
     }
+}
+async function waitForConnectionOpen(sessionId, socket, timeoutMs = 60000) {
+    const entry = pool.get(sessionId);
+    if (!entry || entry.socket !== socket) {
+        throw new Error('WhatsApp connection is not available in the connection pool.');
+    }
+    if (entry.connectionState.connection === 'open') return;
+
+    await new Promise((resolve, reject) => {
+        let settled = false;
+        const cleanup = () => {
+            clearTimeout(timer);
+            socket.ev.off('connection.update', onUpdate);
+        };
+        const finish = (error) => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            if (error) reject(error);
+            else resolve();
+        };
+        const onUpdate = (update) => {
+            if (update.connection === 'open') {
+                finish();
+            } else if (update.connection === 'close') {
+                const statusCode = update.lastDisconnect?.error?.output?.statusCode;
+                finish(new Error('WhatsApp connection closed before opening (code ' + (statusCode ?? 'unknown') + ').'));
+            }
+        };
+        const timer = setTimeout(() => {
+            finish(new Error('Timed out after ' + timeoutMs + ' ms waiting for WhatsApp connection to open.'));
+        }, timeoutMs);
+
+        socket.ev.on('connection.update', onUpdate);
+
+        // Recheck after subscribing to close the race between the first state read
+        // and listener registration.
+        const currentEntry = pool.get(sessionId);
+        if (currentEntry?.socket !== socket) {
+            finish(new Error('WhatsApp connection was replaced before opening.'));
+        } else if (currentEntry.connectionState.connection === 'open') {
+            finish();
+        }
+    });
 }
 function getPoolEntry(sessionId) {
     return pool.get(sessionId);
