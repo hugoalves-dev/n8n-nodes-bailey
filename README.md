@@ -39,7 +39,7 @@ MIT. See [LICENSE](LICENSE) and the preserved original npm distribution under `u
 
 ## Publishing to npm
 
-The GitHub Actions release workflow publishes `@hugoalves-dev/n8n-nodes-bailey` when a version tag (`vX.Y.Z`) is pushed. It runs lint, type-checking, tests, build, and `npm pack --dry-run`, then verifies that the tag matches `package.json` before publishing. Releases use npm Trusted Publishing (GitHub OIDC); no npm token or GitHub secret is required. npm also creates provenance for this trusted publish.
+When a changed `package.json` is merged into `main`, `.github/workflows/release-on-main.yml` creates the matching `vX.Y.Z` GitHub release and dispatches `publish-npm.yml` on that tag. The npm workflow runs lint, type-checking, tests, build, and `npm pack --dry-run`, then verifies that the tag matches `package.json` before publishing. Releases use npm Trusted Publishing (GitHub OIDC); no npm token or GitHub secret is required. npm also creates provenance for this trusted publish.
 
 ### One-time npm setup
 
@@ -50,11 +50,6 @@ The GitHub Actions release workflow publishes `@hugoalves-dev/n8n-nodes-bailey` 
 
 ### Releasing a version
 
-Update `version` in both `package.json` and `package-lock.json`, commit and push that change, then create and push the matching tag. For example, if the package version is `0.2.1`:
+Update `version` in both `package.json` and `package-lock.json`, validate the pull request CI, then merge to `main`. The version-bump workflow creates the GitHub release and dispatches trusted npm publishing. The npm workflow rejects a tag when its version does not match `package.json`. Check the **Actions** tab for both the release and publish runs.
 
-```sh
-git tag v0.2.1
-git push origin v0.2.1
-```
-
-The workflow rejects a tag when its version does not match `package.json`. Check the **Actions** tab for the validation and publish result.
+If automatic publishing needs to be recovered, run **Publish to npm** manually on the existing version tag via GitHub Actions. Do not re-publish an already published npm version.
