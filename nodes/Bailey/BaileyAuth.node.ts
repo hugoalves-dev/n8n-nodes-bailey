@@ -12,14 +12,14 @@ class BaileyAuth implements INodeType {
 		icon: { light: 'file:bailey.svg', dark: 'file:bailey.dark.svg' },
 		group: ['input'],
 		version: 1,
-		description: 'Create or inspect a WhatsApp session and return its pairing code or QR image',
+		description: 'Keep a WhatsApp session alive through pairing and report the authentication result',
 		defaults: { name: 'Bailey Auth' },
 		inputs: [NodeConnectionTypes.Main],
 		outputs: [NodeConnectionTypes.Main],
 		credentials: [{ name: 'baileyApi', required: true }],
 		properties: [
 			{
-				displayName: 'This node starts or reuses the WhatsApp session. Pairing codes are included in node output and n8n logs. The pending socket stays alive for up to five minutes.',
+				displayName: 'This node stays active until authentication succeeds or fails. Find the temporary prompt in execution logs and restrict log access.',
 				name: 'authenticationNotice',
 				type: 'notice',
 				default: '',
@@ -33,13 +33,33 @@ class BaileyAuth implements INodeType {
 		const authMethod = String(credentials.authMethod ?? 'pairingCode');
 		const phoneNumber = normalizePhoneNumber(String(credentials.phoneNumber ?? ''));
 		const socket = await getOrCreateConnection(credentials as never);
+		let promptActive = true;
+		const isSocketActive = () => {
+			const entry = getPoolEntry(sessionId);
+			return entry?.socket === socket && entry.connectionState?.connection !== 'close';
+		};
 		const result = await waitForAuthPrompt({
 			socket: socket as never,
 			getEntry: () => getPoolEntry(sessionId) as never,
 			authMethod,
 			phoneNumber,
-			timeoutMs: 60_000,
+			timeoutMs: 300_000,
+			onPrompt: (prompt) => {
+				if (!promptActive || !isSocketActive()) return;
+				if (prompt.status === 'pairingCode') {
+					const code = prompt.pairingCode.length === 8
+						? `${prompt.pairingCode.slice(0, 4)}-${prompt.pairingCode.slice(4)}`
+						: prompt.pairingCode;
+					this.logger.info(`[Bailey Auth] Pairing code: ${code}`);
+					return;
+				}
+				return QRCode.toString(prompt.qr, { type: 'terminal' }).then((qr) => {
+					if (!promptActive || !isSocketActive()) return;
+					this.logger.info(`[Bailey Auth] Scan this QR code in WhatsApp:\n${qr}`);
+				});
+			},
 		});
+		promptActive = false;
 
 		const item: INodeExecutionData = {
 			json: {
@@ -49,23 +69,14 @@ class BaileyAuth implements INodeType {
 			},
 		};
 
-		if (result.status === 'pairingCode') {
-			const pairingCode = result.pairingCode.length === 8
-				? `${result.pairingCode.slice(0, 4)}-${result.pairingCode.slice(4)}`
-				: result.pairingCode;
-			item.json.pairingCode = pairingCode;
-			item.json.instructions = 'In WhatsApp, open Settings → Linked Devices → Link a Device → Link with phone number and enter this code.';
-			this.logger.info(`[Bailey Auth] Pairing code for session ${sessionId}: ${pairingCode}`);
-		} else if (result.status === 'qrCode') {
-			const png = await QRCode.toBuffer(result.qr, { type: 'png', width: 360, margin: 2 });
-			item.json.instructions = 'Scan this image in WhatsApp → Settings → Linked Devices → Link a Device.';
-			item.binary = {
-				qrCode: await this.helpers.prepareBinaryData(png, 'bailey-qr.png', 'image/png'),
-			};
+		if (result.status === 'authenticated') {
+			item.json.message = 'The WhatsApp session is authenticated.';
 		} else if (result.status === 'timeout') {
-			item.json.message = 'No authentication prompt arrived within 60 seconds. Run this node again; the session socket remains available until its five-minute authentication timeout.';
+			item.json.message = 'Authentication did not complete within five minutes. The prompt has expired; run this node again for a fresh prompt.';
 		} else if (result.status === 'error') {
 			item.json.message = result.message;
+			if (result.statusCode !== undefined) item.json.disconnectStatusCode = result.statusCode;
+			if (result.reason !== undefined) item.json.disconnectReason = result.reason;
 		}
 
 		return [[item]];

@@ -18,7 +18,7 @@ jest.mock('../../../nodes/Bailey/transport/AuthStateStore', () => ({
 	useFileAuthState: (...args: unknown[]) => mockUseFileAuthState(...args),
 }));
 
-import { deregisterSocket, getOrCreateConnection, getPoolEntry } from '../../../nodes/Bailey/transport/ConnectionPool';
+import { deregisterSocket, getOrCreateConnection, getPoolEntry, registerExternalSocket } from '../../../nodes/Bailey/transport/ConnectionPool';
 
 describe('getOrCreateConnection', () => {
 	const credentials = {
@@ -61,5 +61,18 @@ describe('getOrCreateConnection', () => {
 		expect(getPoolEntry(triggerCredentials.sessionId)?.authRegistered).toBe(true);
 		expect(getPoolEntry(triggerCredentials.sessionId)?.idleTimer).toBeNull();
 		deregisterSocket(triggerCredentials.sessionId);
+	});
+
+	it('ignores a late close from a replaced socket for the same session', async () => {
+		await getOrCreateConnection(credentials as never);
+		const oldCloseHandler = mockSocket.ev.on.mock.calls.find(([event]) => event === 'connection.update')?.[1] as
+			((update: { connection: string; lastDisconnect?: unknown }) => void) | undefined;
+		const replacementSocket = { ev: { on: jest.fn(), off: jest.fn() }, end: jest.fn() };
+		deregisterSocket(credentials.sessionId);
+		registerExternalSocket(credentials.sessionId, replacementSocket as never, {} as never, { registered: false } as never, undefined);
+
+		oldCloseHandler?.({ connection: 'close', lastDisconnect: { error: { output: { statusCode: 515 } } } });
+
+		expect(getPoolEntry(credentials.sessionId)?.socket).toBe(replacementSocket);
 	});
 });

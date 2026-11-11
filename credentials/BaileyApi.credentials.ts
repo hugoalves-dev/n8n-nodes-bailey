@@ -39,12 +39,12 @@ class BaileyApi {
                     {
                         name: 'Pairing Code (Recommended)',
                         value: 'pairingCode',
-                        description: 'The credential test returns the code as text. Keep the test open while pairing; manual trigger listening also emits an auth event with the code.',
+                        description: 'Run Bailey Auth and copy the temporary code from its execution log while the node is running. The node finishes after authentication or failure.',
                     },
                     {
                         name: 'QR Code',
                         value: 'qrCode',
-                        description: 'The credential test confirms QR is ready; listen manually with Bailey Trigger to receive the QR payload in its output, then scan it in WhatsApp > Linked Devices',
+                        description: 'Run Bailey Auth and scan the terminal QR shown in its execution log while the node is running. The node finishes after authentication or failure.',
                     },
                 ],
             },
