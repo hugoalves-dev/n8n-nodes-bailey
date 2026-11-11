@@ -111,7 +111,7 @@ async function createConnection(credentials, idleTimeoutMs, cacheSize, keepAlive
     sock.ev.on('creds.update', saveCreds);
     sock.ev.on('creds.update', () => {
         const entry = pool.get(sessionId);
-        if (!entry) return;
+        if (!entry || entry.socket !== sock) return;
         entry.authRegistered = creds.registered === true;
         if (entry.authRegistered) {
             if (entry.authTimer) clearTimeout(entry.authTimer);
@@ -129,10 +129,27 @@ async function createConnection(credentials, idleTimeoutMs, cacheSize, keepAlive
     sock.ev.on('connection.update', (update) => {
         var _a, _b, _c;
         const entry = pool.get(sessionId);
-        if (entry && entry.socket === sock) {
-            entry.connectionState = { ...entry.connectionState, ...update };
-        }
+        // Ignore events from replaced sockets.
+        if (!entry || entry.socket !== sock) return;
+        entry.connectionState = { ...entry.connectionState, ...update };
         const { connection, lastDisconnect } = update;
+        if (connection === 'open') {
+            // Baileys v7 can leave registered=false after QR pairing even when
+            // CB:success confirms the login. QR/isNewLogin alone is insufficient.
+            if (!creds.registered) {
+                creds.registered = true;
+                // Persist the auth object used by this socket for future reconnects.
+                void Promise.resolve().then(() => saveCreds()).catch(() => {
+                    // Do not throw out of an EventEmitter listener on a disk error.
+                });
+            }
+            entry.authRegistered = true;
+            if (entry.authTimer) clearTimeout(entry.authTimer);
+            entry.authTimer = null;
+            if (!entry.keepAlive && !entry.idleTimer) {
+                entry.idleTimer = scheduleIdle(sessionId, idleTimeoutMs);
+            }
+        }
         if (connection === 'close') {
             const currentEntry = pool.get(sessionId);
             if (!currentEntry || currentEntry.socket !== sock) return;
