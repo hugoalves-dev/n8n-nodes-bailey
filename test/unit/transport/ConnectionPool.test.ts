@@ -68,15 +68,28 @@ describe('getOrCreateConnection', () => {
 		expect(mockSaveCreds).toHaveBeenCalledTimes(1);
 	});
 
-	it('restores registered state when creating a socket from saved credentials', async () => {
+	it('restores registered state from persisted credentials after replacing the socket', async () => {
+		let saved = { registered: false };
+		mockUseFileAuthState.mockImplementation(async () => {
+			const creds = { ...saved };
+			return {
+				creds,
+				keys: { get: jest.fn(), set: jest.fn(), clear: jest.fn() },
+				saveCreds: jest.fn(async () => { saved = { ...creds }; }),
+			};
+		});
+
 		await getOrCreateConnection(credentials as never);
 		const onUpdate = mockSocket.ev.on.mock.calls.find(([event]) => event === 'connection.update')?.[1] as
 			((update: { connection?: string }) => void);
 		onUpdate({ connection: 'open' });
 		await Promise.resolve();
-		expect(mockCreds.registered).toBe(true);
+		await Promise.resolve();
+		expect(saved.registered).toBe(true);
+
 		deregisterSocket(credentials.sessionId);
 		await getOrCreateConnection(credentials as never);
+		expect(mockUseFileAuthState).toHaveBeenCalledTimes(2);
 		expect(getPoolEntry(credentials.sessionId)?.authRegistered).toBe(true);
 		expect(getPoolEntry(credentials.sessionId)?.authTimer).toBeNull();
 	});
@@ -93,6 +106,22 @@ describe('getOrCreateConnection', () => {
 		expect(mockCreds.registered).toBe(false);
 		expect(mockSaveCreds).not.toHaveBeenCalled();
 		expect(getPoolEntry(credentials.sessionId)?.socket).toBe(replacementSocket);
+		expect(getPoolEntry(credentials.sessionId)?.authRegistered).toBe(false);
+	});
+
+	it('does not persist stale credential updates from an old socket', async () => {
+		await getOrCreateConnection(credentials as never);
+		const oldHandlers = mockSocket.ev.on.mock.calls
+			.filter(([event]) => event === 'creds.update')
+			.map(([, handler]) => handler as () => void);
+
+		const replacementSocket = { ev: { on: jest.fn(), off: jest.fn() }, end: jest.fn() };
+		deregisterSocket(credentials.sessionId);
+		registerExternalSocket(credentials.sessionId, replacementSocket as never, {} as never, { registered: false } as never, undefined);
+
+		for (const handler of oldHandlers) handler();
+		await Promise.resolve();
+		expect(mockSaveCreds).not.toHaveBeenCalled();
 		expect(getPoolEntry(credentials.sessionId)?.authRegistered).toBe(false);
 	});
 
