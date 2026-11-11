@@ -67,6 +67,25 @@ describe('requestPairingCodeOnce', () => {
 		expect(requestCode).toHaveBeenCalledTimes(1);
 	});
 
+	it('delivers a cached code to a later listener after credential testing', async () => {
+		const state = { requested: false };
+		const requestCode = jest.fn().mockResolvedValue('12345678');
+		await requestPairingCodeOnce(state, requestCode);
+		const onCode = jest.fn();
+		createPairingCodeHandler({ requestCode, onCode, onError: jest.fn(), state })({ qr: 'qr' }, false);
+		await new Promise((resolve) => setImmediate(resolve));
+		expect(onCode).toHaveBeenCalledWith('12345678');
+		expect(requestCode).toHaveBeenCalledTimes(1);
+	});
+
+	it('refreshes an expired code instead of replaying it', async () => {
+		const state = { requested: false };
+		const requestCode = jest.fn().mockResolvedValueOnce('12345678').mockResolvedValueOnce('87654321');
+		await requestPairingCodeOnce(state, requestCode);
+		state.codeExpiresAt = Date.now() - 1;
+		await expect(requestPairingCodeOnce(state, requestCode)).resolves.toBe('87654321');
+	});
+
 	it('allows retry after a failed pairing-code request', async () => {
 		const state = { requested: false };
 		const requestCode = jest.fn()
