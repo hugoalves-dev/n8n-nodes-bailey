@@ -49,7 +49,8 @@ export const chatFields = [
         default: '',
         displayOptions: { show: { resource: ['chat'], operation: ['markMessageRead'] } },
         description: 'The message key from the incoming WhatsApp message, including remoteJID, fromMe, and id',
-        placeholder: '{"remoteJID":"120363000000000000@g.us","fromMe":false,"id":"MESSAGE_ID"}',
+        // eslint-disable-next-line n8n-nodes-base/node-param-placeholder-miscased-id
+        placeholder: '{"remoteJid":"120363000000000000@g.us","fromMe":false,"id":"MESSAGE_ID"}',
     },
     {
         displayName: 'Mute Duration (Ms)',
