@@ -48,8 +48,8 @@ export const chatFields = [
         required: true,
         default: '',
         displayOptions: { show: { resource: ['chat'], operation: ['markMessageRead'] } },
-        description: 'The message key from the incoming WhatsApp message, including remoteJid, fromMe, and id',
-        placeholder: '{"remoteJid":"120363000000000000@g.us","fromMe":false,"id":"MESSAGE_ID"}',
+        description: 'The message key from the incoming WhatsApp message, including remoteJID, fromMe, and id',
+        placeholder: '{"remoteJID":"120363000000000000@g.us","fromMe":false,"id":"MESSAGE_ID"}',
     },
     {
         displayName: 'Mute Duration (Ms)',
