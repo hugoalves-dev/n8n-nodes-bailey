@@ -147,7 +147,7 @@ async function createConnection(credentials, idleTimeoutMs, cacheSize) {
                 const t = setTimeout(() => {
                     reconnectTimers.delete(sessionId);
                     if (pool.has(sessionId)) return;
-                    getOrCreateConnection(credentials).catch(() => {
+                    getOrCreateConnection(credentials, currentEntry.keepAlive).catch(() => {
                     });
                 }, 3000);
                 reconnectTimers.set(sessionId, t);
