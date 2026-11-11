@@ -4,6 +4,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 export { executeGroupOperation };
 const n8n_workflow_1 = require("n8n-workflow");
+const ConnectionPool_1 = require("../transport/ConnectionPool");
 async function executeGroupOperation(sock, operation, i) {
     switch (operation) {
         case 'create': {
@@ -19,6 +20,8 @@ async function executeGroupOperation(sock, operation, i) {
             return { json: result };
         }
         case 'getAllParticipating': {
+            const credentials = await this.getCredentials('baileyApi');
+            await ConnectionPool_1.waitForConnectionOpen(credentials.sessionId, sock);
             const result = await sock.groupFetchAllParticipating();
             return { json: result };
         }
