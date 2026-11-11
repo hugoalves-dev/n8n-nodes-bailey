@@ -13,6 +13,7 @@ export const chatOperations = [
             { name: 'Archive', value: 'archive', action: 'Archive a chat' },
             { name: 'Clear Chat', value: 'clearChat', action: 'Clear all messages in a chat' },
             { name: 'Delete Chat', value: 'deleteChat', action: 'Delete an entire chat' },
+            { name: 'Mark Message Read', value: 'markMessageRead', action: 'Mark an individual message as read' },
             { name: 'Mark Read', value: 'markRead', action: 'Mark chat as read' },
             { name: 'Mark Unread', value: 'markUnread', action: 'Mark chat as unread' },
             { name: 'Mute', value: 'mute', action: 'Mute a chat' },
@@ -34,11 +35,22 @@ export const chatFields = [
         displayOptions: {
             show: {
                 resource: ['chat'],
-                operation: ['archive', 'unarchive', 'mute', 'unmute', 'markRead', 'markUnread', 'pin', 'unpin', 'deleteChat', 'clearChat'],
+                operation: ['archive', 'unarchive', 'mute', 'unmute', 'markRead', 'markMessageRead', 'markUnread', 'pin', 'unpin', 'deleteChat', 'clearChat'],
             },
         },
         description: 'JID of the chat to modify',
         placeholder: '12025551234@s.whatsapp.net',
+    },
+    {
+        displayName: 'Message Key (JSON)',
+        name: 'messageKey',
+        type: 'string',
+        required: true,
+        default: '',
+        displayOptions: { show: { resource: ['chat'], operation: ['markMessageRead'] } },
+        description: 'The message key from the incoming WhatsApp message, including remoteJid, fromMe, and the message ID',
+        // eslint-disable-next-line n8n-nodes-base/node-param-placeholder-miscased-id
+        placeholder: '{"remoteJid":"120363000000000000@g.us","fromMe":false,"id":"MESSAGE_ID"}',
     },
     {
         displayName: 'Mute Duration (Ms)',

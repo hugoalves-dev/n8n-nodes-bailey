@@ -24,6 +24,29 @@ async function executeChatOperation(sock, operation, i) {
         case 'markRead':
             await sock.chatModify({ markRead: true, lastMessages: [] }, jid);
             return { json: { success: true, jid, action: 'markRead' } };
+        case 'markMessageRead': {
+            let messageKey;
+            try {
+                messageKey = JSON.parse(this.getNodeParameter('messageKey', i));
+            }
+            catch {
+                throw new n8n_workflow_1.NodeOperationError(this.getNode(), 'Message Key must be valid JSON.', {
+                    itemIndex: i,
+                });
+            }
+            if (!messageKey
+                || typeof messageKey !== 'object'
+                || typeof messageKey.remoteJid !== 'string'
+                || messageKey.remoteJid !== jid
+                || typeof messageKey.fromMe !== 'boolean'
+                || typeof messageKey.id !== 'string') {
+                throw new n8n_workflow_1.NodeOperationError(this.getNode(), 'Message Key must include a matching remoteJid, fromMe, and id.', {
+                    itemIndex: i,
+                });
+            }
+            await sock.readMessages([messageKey]);
+            return { json: { success: true, jid, action: 'markMessageRead', messageId: messageKey.id } };
+        }
         case 'markUnread':
             await sock.chatModify({ markRead: false, lastMessages: [] }, jid);
             return { json: { success: true, jid, action: 'markUnread' } };
