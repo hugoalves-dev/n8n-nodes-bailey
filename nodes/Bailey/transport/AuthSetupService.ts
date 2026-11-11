@@ -76,7 +76,6 @@ export function waitForAuthPrompt({
 		let settled = false;
 		let promptDelivered = false;
 		let promptDelivery = Promise.resolve();
-		let timer: ReturnType<typeof setTimeout>;
 
 		const cleanup = () => {
 			clearTimeout(timer);
@@ -138,7 +137,7 @@ export function waitForAuthPrompt({
 				}));
 		};
 
-		timer = setTimeout(() => finish({ status: 'timeout' }), timeoutMs);
+		const timer = setTimeout(() => finish({ status: 'timeout' }), timeoutMs);
 		socket.ev.on('connection.update', onConnectionUpdate);
 		socket.ev.on('creds.update', onCredentialsUpdate);
 
