@@ -108,7 +108,13 @@ async function createConnection(credentials, idleTimeoutMs, cacheSize, keepAlive
         }
     }
     const sock = (0, baileys_1.default)(socketConfig);
-    sock.ev.on('creds.update', saveCreds);
+    sock.ev.on('creds.update', () => {
+        const active = pool.get(sessionId);
+        if (!active || active.socket !== sock) return;
+        void Promise.resolve().then(() => saveCreds()).catch(() => {
+            console.error('[Bailey] Could not persist WhatsApp credentials; check auth storage permissions.');
+        });
+    });
     sock.ev.on('creds.update', () => {
         const entry = pool.get(sessionId);
         if (!entry || entry.socket !== sock) return;
@@ -140,7 +146,7 @@ async function createConnection(credentials, idleTimeoutMs, cacheSize, keepAlive
                 creds.registered = true;
                 // Persist the auth object used by this socket for future reconnects.
                 void Promise.resolve().then(() => saveCreds()).catch(() => {
-                    // Do not throw out of an EventEmitter listener on a disk error.
+                    console.error('[Bailey] Could not persist authenticated session; check auth storage permissions.');
                 });
             }
             entry.authRegistered = true;
