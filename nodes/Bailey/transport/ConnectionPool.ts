@@ -41,6 +41,7 @@ export { registerExternalSocket };
 export { deregisterSocket };
 export { getPoolEntry };
 export { subscribeToSession };
+export { getSessionSubscriptionStatus };
 const baileys_1 = __importStar(require("@whiskeysockets/baileys"));
 const AuthStateStore_1 = require("./AuthStateStore");
 const MessageCache_1 = require("./MessageCache");
@@ -52,6 +53,11 @@ const pendingConnections = new Map();
 const reconnectTimers = new Map();
 const sessionSubscriptions = new Map();
 
+function getSessionSubscriptionStatus(sessionId) {
+    const subscriptions = sessionSubscriptions.get(sessionId);
+    const socket = pool.get(sessionId)?.socket;
+    return { registered: subscriptions?.size ?? 0, bound: socket ? [...(subscriptions ?? [])].filter((subscription) => subscription.socket === socket).length : 0 };
+}
 async function subscribeToSession(credentials, bind) {
     const sessionId = credentials.sessionId;
     let subscriptions = sessionSubscriptions.get(sessionId);

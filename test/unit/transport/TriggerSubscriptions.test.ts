@@ -76,3 +76,23 @@ it('delivers events through the trigger after a socket replacement', async () =>
 	expect(current.end).toHaveBeenCalledTimes(1);
 	jest.useRealTimers();
 });
+
+it('reports registered and currently bound triggers separately from socket state', async () => {
+	jest.useFakeTimers();
+	const { getSessionSubscriptionStatus } = await import('../../../nodes/Bailey/transport/ConnectionPool');
+	const credentials = { sessionId: 'health-test' };
+	const release = await subscribeToSession(credentials, socket => {
+		const listener = () => {};
+		socket.ev.on('messages.upsert', listener);
+		return () => socket.ev.off('messages.upsert', listener);
+	});
+	const old = sockets[sockets.length - 1];
+	expect(getSessionSubscriptionStatus(credentials.sessionId)).toEqual({ registered: 1, bound: 1 });
+	old.ev.emit('connection.update', { connection: 'close', lastDisconnect: { error: { output: { statusCode: 515 } } } });
+	expect(getSessionSubscriptionStatus(credentials.sessionId)).toEqual({ registered: 1, bound: 0 });
+	await jest.advanceTimersByTimeAsync(3000);
+	expect(getSessionSubscriptionStatus(credentials.sessionId)).toEqual({ registered: 1, bound: 1 });
+	release();
+	expect(getSessionSubscriptionStatus(credentials.sessionId)).toEqual({ registered: 0, bound: 0 });
+	jest.useRealTimers();
+});
