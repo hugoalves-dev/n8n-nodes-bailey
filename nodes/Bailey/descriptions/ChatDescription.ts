@@ -13,6 +13,7 @@ export const chatOperations = [
             { name: 'Archive', value: 'archive', action: 'Archive a chat' },
             { name: 'Clear Chat', value: 'clearChat', action: 'Clear all messages in a chat' },
             { name: 'Delete Chat', value: 'deleteChat', action: 'Delete an entire chat' },
+            { name: 'Mark Chat Read Through Message', value: 'markChatReadThroughMessage', action: 'Mark chat read through a specific message' },
             { name: 'Mark Message Read', value: 'markMessageRead', action: 'Mark an individual message as read' },
             { name: 'Mark Read', value: 'markRead', action: 'Mark chat as read' },
             { name: 'Mark Unread', value: 'markUnread', action: 'Mark chat as unread' },
@@ -40,6 +41,17 @@ export const chatFields = [
         },
         description: 'JID of the chat to modify',
         placeholder: '12025551234@s.whatsapp.net',
+    },
+    {
+        displayName: 'Last Message (JSON)',
+        name: 'lastMessage',
+        type: 'string',
+        required: true,
+        default: '',
+        displayOptions: { show: { resource: ['chat'], operation: ['markChatReadThroughMessage'] } },
+        description: 'The latest WAMessage in the chat, including key and messageTimestamp. Baileys uses it as the range boundary for marking the chat read.',
+        // eslint-disable-next-line n8n-nodes-base/node-param-placeholder-miscased-id
+        placeholder: '{"key":{"remoteJid":"120363000000000000@g.us","fromMe":false,"id":"MESSAGE_ID","participant":"5511999999999@s.whatsapp.net"},"messageTimestamp":1731430800}',
     },
     {
         displayName: 'Message Key (JSON)',

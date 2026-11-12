@@ -24,6 +24,36 @@ async function executeChatOperation(sock, operation, i) {
         case 'markRead':
             await sock.chatModify({ markRead: true, lastMessages: [] }, jid);
             return { json: { success: true, jid, action: 'markRead' } };
+        case 'markChatReadThroughMessage': {
+            let lastMessage;
+            try {
+                lastMessage = JSON.parse(this.getNodeParameter('lastMessage', i));
+            }
+            catch {
+                throw new n8n_workflow_1.NodeOperationError(this.getNode(), 'Last Message must be valid JSON.', {
+                    itemIndex: i,
+                });
+            }
+            const key = lastMessage?.key;
+            const timestamp = Number(lastMessage?.messageTimestamp);
+            if (!key
+                || typeof key !== 'object'
+                || typeof key.remoteJid !== 'string'
+                || key.remoteJid !== jid
+                || typeof key.fromMe !== 'boolean'
+                || typeof key.id !== 'string'
+                || !key.id
+                || !Number.isFinite(timestamp)
+                || timestamp <= 0
+                || (jid.endsWith('@g.us') && key.fromMe === false && typeof key.participant !== 'string')) {
+                throw new n8n_workflow_1.NodeOperationError(this.getNode(), 'Last Message must include a matching chat key, message ID, timestamp, and a participant for incoming group messages.', {
+                    itemIndex: i,
+                });
+            }
+            lastMessage.messageTimestamp = timestamp;
+            await sock.chatModify({ markRead: true, lastMessages: [lastMessage] }, jid);
+            return { json: { success: true, jid, action: 'markChatReadThroughMessage', messageId: key.id } };
+        }
         case 'markMessageRead': {
             let messageKey;
             try {
