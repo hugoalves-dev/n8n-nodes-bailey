@@ -50,6 +50,7 @@ export const chatFields = [
         default: '',
         displayOptions: { show: { resource: ['chat'], operation: ['markChatReadThroughMessage'] } },
         description: 'The latest WAMessage in the chat, including key and messageTimestamp. Baileys uses it as the range boundary for marking the chat read.',
+        // eslint-disable-next-line n8n-nodes-base/node-param-placeholder-miscased-id
         placeholder: '{"key":{"remoteJid":"120363000000000000@g.us","fromMe":false,"id":"MESSAGE_ID","participant":"5511999999999@s.whatsapp.net"},"messageTimestamp":1731430800}',
     },
     {
