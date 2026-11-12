@@ -24,6 +24,8 @@ After a QR scan, Baileys v7 may emit `connection: open` without setting `creds.r
 
 **Check Status** also reports `triggerSubscriptions.registered` and `triggerSubscriptions.bound` for this session in the current n8n process. A bound subscription is attached to the active socket; it does not prove that WhatsApp delivered events or that a workflow processed them. In multi-process installations, this status reflects only the process executing the status node. A reconnect does not guarantee recovery of messages missed while disconnected; history sync may be partial or unavailable.
 
+The **History Sync** event can be selected in Bailey Trigger. **User → Fetch Message History** requires a known message key (`remoteJid`, `id`, `fromMe`) and a positive Unix timestamp. It requests history asynchronously; results arrive through `messaging-history.set` and can be partial or absent. The caller must persist cursors, deduplicate and handle incomplete recovery; requesting history does not guarantee recovery or downstream notification.
+
 Authentication files are stored below `~/.n8n/baileys/<sessionId>` by default. In Docker, mount the configured auth directory as a persistent volume. The `sessionId` must be a single path segment; use the same value in credentials shared by a trigger and action node. Set **Idle Timeout (Seconds)** to `0` to disable idle cleanup.
 
 For migration from the legacy package, preserve and back up its session directory before changing package names or auth paths. Use the same session ID and point **Auth Data Path** at the existing directory. Do not remove the old directory; Baileys updates auth files as the session changes.

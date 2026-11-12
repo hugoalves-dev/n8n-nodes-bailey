@@ -49,8 +49,17 @@ async function executeUserOperation(sock, operation, i) {
             const count = this.getNodeParameter('historyCount', i, 25);
             const keyJson = this.getNodeParameter('oldestMsgKey', i, '{}');
             const timestamp = this.getNodeParameter('oldestMsgTimestamp', i, 0);
-            const requestId = await sock.fetchMessageHistory(count, keyJson, timestamp);
-            return { json: { requestId, note: 'Results arrive via messaging-history.set event' } };
+            let key;
+            try {
+                key = typeof keyJson === 'string' ? JSON.parse(keyJson) : keyJson;
+            } catch {
+                throw new n8n_workflow_1.NodeOperationError(this.getNode(), 'Oldest Message Key must be valid JSON.', { itemIndex: i });
+            }
+            if (!key || typeof key !== 'object' || Array.isArray(key) || typeof key.remoteJid !== 'string' || !key.remoteJid.trim() || typeof key.id !== 'string' || !key.id.trim() || typeof key.fromMe !== 'boolean' || !Number.isFinite(timestamp) || timestamp <= 0) {
+                throw new n8n_workflow_1.NodeOperationError(this.getNode(), 'A message key with remoteJid, id and fromMe, and a positive timestamp are required to request history.', { itemIndex: i });
+            }
+            const requestId = await sock.fetchMessageHistory(count, key, timestamp);
+            return { json: { requestId, note: 'Results arrive asynchronously via messaging-history.set and may be partial or unavailable.' } };
         }
         default:
             throw new n8n_workflow_1.NodeOperationError(this.getNode(), `Unknown user operation: ${operation}`, {
