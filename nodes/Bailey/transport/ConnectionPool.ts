@@ -40,6 +40,7 @@ export { waitForConnectionOpen };
 export { registerExternalSocket };
 export { deregisterSocket };
 export { getPoolEntry };
+export { subscribeToSession };
 const baileys_1 = __importStar(require("@whiskeysockets/baileys"));
 const AuthStateStore_1 = require("./AuthStateStore");
 const MessageCache_1 = require("./MessageCache");
@@ -49,6 +50,50 @@ const DEFAULT_IDLE_TIMEOUT_MS = 30000;
 const AUTHENTICATION_TIMEOUT_MS = 5 * 60 * 1000;
 const pendingConnections = new Map();
 const reconnectTimers = new Map();
+const sessionSubscriptions = new Map();
+
+async function subscribeToSession(credentials, bind) {
+    const sessionId = credentials.sessionId;
+    let subscriptions = sessionSubscriptions.get(sessionId);
+    if (!subscriptions) sessionSubscriptions.set(sessionId, subscriptions = new Set());
+    const subscription = { bind, cleanup: null, socket: null };
+    subscriptions.add(subscription);
+    try {
+        const socket = await getOrCreateConnection(credentials, true);
+        if (subscriptions.has(subscription) && subscription.socket !== socket) {
+            subscription.socket = socket;
+            subscription.cleanup = bind(socket);
+        }
+    } catch (error) {
+        subscriptions.delete(subscription);
+        if (!subscriptions.size) sessionSubscriptions.delete(sessionId);
+        throw error;
+    }
+    return () => {
+        if (!subscriptions.delete(subscription)) return;
+        subscription.cleanup?.();
+        if (subscriptions.size) return;
+        sessionSubscriptions.delete(sessionId);
+        const entry = pool.get(sessionId);
+        deregisterSocket(sessionId);
+        entry?.socket.end(undefined);
+    };
+}
+function bindSessionSubscriptions(sessionId, socket) {
+    for (const subscription of sessionSubscriptions.get(sessionId) ?? []) {
+        subscription.cleanup?.();
+        subscription.socket = socket;
+        subscription.cleanup = subscription.bind(socket);
+    }
+}
+function unbindSessionSubscriptions(sessionId, socket) {
+    for (const subscription of sessionSubscriptions.get(sessionId) ?? []) {
+        if (subscription.socket !== socket) continue;
+        subscription.cleanup?.();
+        subscription.cleanup = null;
+        subscription.socket = null;
+    }
+}
 async function getOrCreateConnection(credentials, keepAlive = false) {
     const { sessionId, messageCacheSize, idleTimeoutSeconds } = credentials;
     const scheduledReconnect = reconnectTimers.get(sessionId);
@@ -164,6 +209,7 @@ async function createConnection(credentials, idleTimeoutMs, cacheSize, keepAlive
             if (!currentEntry || currentEntry.socket !== sock) return;
             if (currentEntry && currentEntry.authTimer) clearTimeout(currentEntry.authTimer);
             if (currentEntry.idleTimer) clearTimeout(currentEntry.idleTimer);
+            unbindSessionSubscriptions(sessionId, sock);
             const statusCode = (_b = (_a = lastDisconnect === null || lastDisconnect === void 0 ? void 0 : lastDisconnect.error) === null || _a === void 0 ? void 0 : _a.output) === null || _b === void 0 ? void 0 : _b.statusCode;
             const shouldReconnect = statusCode !== baileys_1.DisconnectReason.loggedOut && !(currentEntry === null || currentEntry === void 0 ? void 0 : currentEntry.authenticationTimedOut);
             if (shouldReconnect) {
@@ -173,7 +219,14 @@ async function createConnection(credentials, idleTimeoutMs, cacheSize, keepAlive
                 const t = setTimeout(() => {
                     reconnectTimers.delete(sessionId);
                     if (pool.has(sessionId)) return;
-                    getOrCreateConnection(credentials, currentEntry.keepAlive).catch(() => {
+                    const hadSubscriptions = sessionSubscriptions.has(sessionId);
+                    getOrCreateConnection(credentials, currentEntry.keepAlive).then((socket) => {
+                        // The last trigger may have been deactivated while auth state was loading.
+                        if (hadSubscriptions && !sessionSubscriptions.has(sessionId) && pool.get(sessionId)?.socket === socket) {
+                            deregisterSocket(sessionId);
+                            socket.end(undefined);
+                        }
+                    }).catch(() => {
                     });
                 }, 3000);
                 reconnectTimers.set(sessionId, t);
@@ -198,6 +251,7 @@ async function createConnection(credentials, idleTimeoutMs, cacheSize, keepAlive
         keepAlive,
     };
     pool.set(sessionId, entry);
+    bindSessionSubscriptions(sessionId, sock);
     return sock;
 }
 function scheduleIdle(sessionId, timeoutMs) {

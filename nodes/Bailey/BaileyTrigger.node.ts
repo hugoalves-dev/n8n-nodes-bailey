@@ -291,46 +291,10 @@ class BaileyTrigger {
         const event = this.getNodeParameter('event', 'messages.upsert');
         const options = this.getNodeParameter('options', {});
         const { sessionId } = credentials;
-        const sock = await (0, ConnectionPool_1.getOrCreateConnection)(credentials, true);
+        let sock = await (0, ConnectionPool_1.getOrCreateConnection)(credentials, true);
         const poolEntry = (0, ConnectionPool_1.getPoolEntry)(sessionId);
         const isRegistered = poolEntry === null || poolEntry === void 0 ? false : poolEntry.authRegistered;
         const isPairingCode = credentials.authMethod === 'pairingCode';
-        if (!isRegistered && credentials.authMethod === 'qrCode' && this.getMode() === 'manual') {
-            const qrHandler = (update) => {
-                if (update.qr && this.getMode() === 'manual') {
-                    this.emit([this.helpers.returnJsonArray([{
-                        _event: 'auth.qr',
-                        _sessionId: sessionId,
-                        qrCode: update.qr,
-                        instructions: 'Scan in WhatsApp → Settings → Linked Devices → Link a Device.',
-                    }])]);
-                }
-            };
-            sock.ev.on('connection.update', qrHandler);
-        }
-        if (isPairingCode && !isRegistered && this.getMode() === 'manual') {
-            const handlePairingUpdate = (0, PairingCoordinator_1.createPairingCodeHandler)({
-                requestCode: () => sock.requestPairingCode((0, TransportPolicy_1.normalizePhoneNumber)(credentials.phoneNumber)),
-                onCode: (code) => {
-                    if (this.getMode() === 'manual') {
-                        this.emit([this.helpers.returnJsonArray([{ _event: 'pairing.code', _sessionId: sessionId, pairingCode: code }])]);
-                    }
-                    else {
-                        this.logger.info('[Bailey] Pairing code created. Run the credential test to display it.');
-                    }
-                },
-                onError: (message) => this.logger.error(message),
-                state: poolEntry.pairingState,
-            });
-            sock.ev.on('connection.update', (update) => {
-                const registered = (0, ConnectionPool_1.getPoolEntry)(sessionId);
-                handlePairingUpdate(update, registered === null || registered === void 0 ? false : registered.authRegistered);
-            });
-            if (poolEntry && poolEntry.connectionState.qr) handlePairingUpdate(poolEntry.connectionState, poolEntry.authRegistered);
-        }
-        else if (isPairingCode && !isRegistered) {
-            this.logger.info('[Bailey] Authentication is pending. Run the credential test or listen manually to display a pairing code.');
-        }
         const emit = (eventName, data) => {
             const payload = {};
             if (options.includeMetadata !== false) {
@@ -347,23 +311,70 @@ class BaileyTrigger {
             this.emit([this.helpers.returnJsonArray([payload])]);
         };
         const eventsToListen = event === '*' ? ALL_EVENTS.map((e) => e.value) : [event];
-        for (const evName of eventsToListen) {
-            sock.ev.on(evName, (data) => {
-                if (evName === 'messages.upsert' &&
-                    options.onlyRealMessages &&
-                    data != null &&
-                    typeof data === 'object' &&
-                    'messages' in data) {
-                    const upsert = data;
-                    const filtered = upsert.messages.filter((m) => { var _a; return !((_a = m.message) === null || _a === void 0 ? void 0 : _a.protocolMessage); });
-                    if (filtered.length === 0)
+        const release = await (0, ConnectionPool_1.subscribeToSession)(credentials, (socket) => {
+            sock = socket;
+            const cleanups = [];
+            if (!isRegistered && credentials.authMethod === 'qrCode' && this.getMode() === 'manual') {
+                const qrHandler = (update) => {
+                    if (update.qr && this.getMode() === 'manual') {
+                        this.emit([this.helpers.returnJsonArray([{
+                            _event: 'auth.qr',
+                            _sessionId: sessionId,
+                            qrCode: update.qr,
+                            instructions: 'Scan in WhatsApp → Settings → Linked Devices → Link a Device.',
+                        }])]);
+                    }
+                };
+                socket.ev.on('connection.update', qrHandler);
+                cleanups.push(() => socket.ev.off('connection.update', qrHandler));
+            }
+            if (isPairingCode && !isRegistered && this.getMode() === 'manual') {
+                const handlePairingUpdate = (0, PairingCoordinator_1.createPairingCodeHandler)({
+                    requestCode: () => socket.requestPairingCode((0, TransportPolicy_1.normalizePhoneNumber)(credentials.phoneNumber)),
+                    onCode: (code) => {
+                        if (this.getMode() === 'manual') {
+                            this.emit([this.helpers.returnJsonArray([{ _event: 'pairing.code', _sessionId: sessionId, pairingCode: code }])]);
+                        }
+                        else {
+                            this.logger.info('[Bailey] Pairing code created. Run the credential test to display it.');
+                        }
+                    },
+                    onError: (message) => this.logger.error(message),
+                    state: (0, ConnectionPool_1.getPoolEntry)(sessionId).pairingState,
+                });
+                const pairingListener = (update) => {
+                    const registered = (0, ConnectionPool_1.getPoolEntry)(sessionId);
+                    handlePairingUpdate(update, registered === null || registered === void 0 ? false : registered.authRegistered);
+                };
+                socket.ev.on('connection.update', pairingListener);
+                cleanups.push(() => socket.ev.off('connection.update', pairingListener));
+                const activeEntry = (0, ConnectionPool_1.getPoolEntry)(sessionId);
+            if (activeEntry && activeEntry.connectionState.qr) handlePairingUpdate(activeEntry.connectionState, activeEntry.authRegistered);
+            }
+            else if (isPairingCode && !isRegistered) {
+                this.logger.info('[Bailey] Authentication is pending. Run the credential test or listen manually to display a pairing code.');
+            }
+            for (const evName of eventsToListen) {
+                const handler = (data) => {
+                    if (evName === 'messages.upsert' &&
+                        options.onlyRealMessages &&
+                        data != null &&
+                        typeof data === 'object' &&
+                        'messages' in data) {
+                        const upsert = data;
+                        const filtered = upsert.messages.filter((m) => { var _a; return !((_a = m.message) === null || _a === void 0 ? void 0 : _a.protocolMessage); });
+                        if (filtered.length === 0)
+                            return;
+                        emit(evName, { ...upsert, messages: filtered });
                         return;
-                    emit(evName, { ...upsert, messages: filtered });
-                    return;
-                }
-                emit(evName, data);
-            });
-        }
+                    }
+                    emit(evName, data);
+                };
+                socket.ev.on(evName, handler);
+                cleanups.push(() => socket.ev.off(evName, handler));
+            }
+            return () => cleanups.forEach((cleanup) => cleanup());
+        });
         const manualTriggerFunction = async () => {
             await new Promise((resolve) => {
                 const evName = eventsToListen[0];
@@ -377,8 +388,7 @@ class BaileyTrigger {
             });
         };
         const closeFunction = async () => {
-            (0, ConnectionPool_1.deregisterSocket)(sessionId);
-            sock.end(undefined);
+            release();
         };
         return { closeFunction, manualTriggerFunction };
     }
