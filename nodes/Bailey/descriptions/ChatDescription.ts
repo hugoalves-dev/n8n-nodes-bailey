@@ -42,6 +42,16 @@ export const chatFields = [
         placeholder: '12025551234@s.whatsapp.net',
     },
     {
+        displayName: 'Last Message (JSON)',
+        name: 'lastMessage',
+        type: 'string',
+        required: true,
+        default: '',
+        displayOptions: { show: { resource: ['chat'], operation: ['markRead'] } },
+        description: 'The latest WAMessage in the chat, including key and messageTimestamp. Baileys uses it as the range boundary for marking the chat read.',
+        placeholder: '{"key":{"remoteJid":"120363000000000000@g.us","fromMe":false,"id":"MESSAGE_ID","participant":"5511999999999@s.whatsapp.net"},"messageTimestamp":1731430800}',
+    },
+    {
         displayName: 'Message Key (JSON)',
         name: 'messageKey',
         type: 'string',
