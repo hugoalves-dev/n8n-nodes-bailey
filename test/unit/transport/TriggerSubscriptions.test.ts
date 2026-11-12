@@ -11,7 +11,7 @@ jest.mock('../../../nodes/Bailey/transport/AuthStateStore', () => ({
 	sessionDirFromConfig: () => '/tmp/test',
 	useFileAuthState: async () => ({ creds: { registered: true }, keys: {}, saveCreds: jest.fn() }),
 }));
-import { getOrCreateConnection, subscribeToSession } from '../../../nodes/Bailey/transport/ConnectionPool';
+import { subscribeToSession } from '../../../nodes/Bailey/transport/ConnectionPool';
 
 it('rebinds two independent subscriptions across reconnects and closes only after the last release', async () => {
 	jest.useFakeTimers();

@@ -4,6 +4,11 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const n8n_workflow_1 = require("n8n-workflow");
 const ConnectionPool_1 = require("./transport/ConnectionPool");
+const RecoveryDescription_1 = require("./descriptions/RecoveryDescription");
+const RecoveryStore_1 = require("./transport/RecoveryStore");
+const RecoveryOperation_1 = require("./operations/recovery.operations");
+const AuthStateStore_1 = require("./transport/AuthStateStore");
+const path = require("path");
 const MessageDescription_1 = require("./descriptions/MessageDescription");
 const MediaDescription_1 = require("./descriptions/MediaDescription");
 const ChatDescription_1 = require("./descriptions/ChatDescription");
@@ -77,10 +82,12 @@ class Bailey {
                         { name: 'Newsletter', value: 'newsletter' },
                         { name: 'Privacy', value: 'privacy' },
                         { name: 'Profile', value: 'profile' },
+                        { name: 'Recovery', value: 'recovery' },
                         { name: 'User', value: 'user' },
                     ],
                     default: 'message',
                 },
+                ...RecoveryDescription_1.recoveryFields,
                 ...MessageDescription_1.messageOperations,
                 ...MediaDescription_1.mediaOperations,
                 ...ChatDescription_1.chatOperations,
@@ -116,12 +123,24 @@ class Bailey {
         const items = this.getInputData();
         const returnData = [];
         const credentials = (await this.getCredentials('baileyApi'));
-        const sock = await (0, ConnectionPool_1.getOrCreateConnection)(credentials);
+        let sock;
         for (let i = 0; i < items.length; i++) {
             try {
                 const resource = this.getNodeParameter('resource', i);
                 const operation = this.getNodeParameter('operation', i);
                 let result;
+                if (resource === 'recovery') {
+                    const triggerId = this.getNodeParameter('triggerId', i);
+                    const workflowId = this.getWorkflow().id;
+                    if (!triggerId || !workflowId) throw new n8n_workflow_1.NodeOperationError(this.getNode(), 'Workflow ID and Trigger ID are required.', { itemIndex: i });
+                    const dir = path.join((0, AuthStateStore_1.sessionDirFromConfig)(credentials.authDataPath ?? '~/.n8n/baileys', credentials.sessionId), 'recovery');
+                    const store = new RecoveryStore_1.RecoveryStore(dir, credentials.sessionId, `${workflowId}:${triggerId}`);
+                    result = await RecoveryOperation_1.executeRecoveryOperation.call(this, store, operation, i);
+                    result.pairedItem = i;
+                    returnData.push(result);
+                    continue;
+                }
+                sock ??= await (0, ConnectionPool_1.getOrCreateConnection)(credentials);
                 switch (resource) {
                     case 'message':
                         result = await message_operations_1.executeMessageOperation.call(this, sock, operation, i);

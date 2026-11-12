@@ -45,6 +45,7 @@ const MessageCache_1 = require("./transport/MessageCache");
 const ConnectionPool_1 = require("./transport/ConnectionPool");
 const PairingCoordinator_1 = require("./transport/PairingCoordinator");
 const TransportPolicy_1 = require("./transport/TransportPolicy");
+const RecoveryStore_1 = require("./transport/RecoveryStore");
 const ALL_EVENTS = [
     { name: 'Message Received', value: 'messages.upsert', description: 'New or appended messages' },
     { name: 'Message Updated', value: 'messages.update', description: 'Message status, poll votes, edits' },
@@ -141,6 +142,13 @@ class BaileyTrigger {
                             type: 'boolean',
                             default: true,
                             description: 'Whether to include event type and session ID in the output',
+                        },
+                        {
+                            displayName: 'Durable Message Recovery',
+                            name: 'durableRecovery',
+                            type: 'boolean',
+                            default: false,
+                            description: 'Whether to persist message content and deduplication state locally until acknowledged',
                         },
                         {
                             displayName: 'Only Real Messages',
@@ -311,6 +319,30 @@ class BaileyTrigger {
             this.emit([this.helpers.returnJsonArray([payload])]);
         };
         const eventsToListen = event === '*' ? ALL_EVENTS.map((e) => e.value) : [event];
+        if (options.durableRecovery && event !== '*' && event !== 'messages.upsert') {
+            throw new n8n_workflow_1.NodeOperationError(this.getNode(), 'Durable Message Recovery requires Message Received or All Events.');
+        }
+        if (options.durableRecovery && (!this.getWorkflow().id || !this.getNode().id)) {
+            throw new n8n_workflow_1.NodeOperationError(this.getNode(), 'Durable Message Recovery requires a saved workflow and a trigger ID.');
+        }
+        const recovery = options.durableRecovery
+            ? new RecoveryStore_1.RecoveryStore(path.join((0, AuthStateStore_1.sessionDirFromConfig)(credentials.authDataPath ?? '~/.n8n/baileys', sessionId), 'recovery'), sessionId, `${this.getWorkflow().id}:${this.getNode().id}`)
+            : null;
+        let recoveryQueue = Promise.resolve();
+        let recoveryActive = true;
+        const enqueueRecovery = (work) => {
+            recoveryQueue = recoveryQueue.then(work).catch((error) => {
+                recoveryActive = false;
+                this.emitError(error instanceof Error ? error : new Error(String(error)));
+            });
+        };
+        if (recovery) enqueueRecovery(async () => {
+            const pending = await recovery.pending();
+            for (let offset = 0; offset < pending.length && recoveryActive; offset += 25) {
+                const batch = pending.slice(offset, offset + 25);
+                emit('messages.upsert', { type: 'append', messages: batch.map((entry) => entry.message), _recovery: { triggerId: this.getNode().id, source: 'pending', entries: batch.map((entry) => ({ key: entry.key, origin: entry.origin, receivedAt: entry.receivedAt })) } });
+            }
+        });
         const release = await (0, ConnectionPool_1.subscribeToSession)(credentials, (socket) => {
             sock = socket;
             const cleanups = [];
@@ -354,8 +386,22 @@ class BaileyTrigger {
             else if (isPairingCode && !isRegistered) {
                 this.logger.info('[Bailey] Authentication is pending. Run the credential test or listen manually to display a pairing code.');
             }
-            for (const evName of eventsToListen) {
+            for (const evName of (recovery && !eventsToListen.includes('messaging-history.set') ? [...eventsToListen, 'messaging-history.set'] : eventsToListen)) {
                 const handler = (data) => {
+                    if (recovery && (evName === 'messages.upsert' || evName === 'messaging-history.set')) {
+                        enqueueRecovery(async () => {
+                            if (!Array.isArray(data?.messages)) return;
+                            const fresh = [];
+                            for (const message of data.messages) {
+                                if (options.onlyRealMessages && message.message?.protocolMessage) continue;
+                                if (await recovery.record(message, evName === 'messages.upsert' && data.type !== 'append' ? 'live' : 'history')) fresh.push(message);
+                            }
+                            for (let offset = 0; offset < fresh.length && recoveryActive; offset += 25) {
+                                emit('messages.upsert', { type: evName === 'messages.upsert' ? data.type : 'append', messages: fresh.slice(offset, offset + 25), _recovery: { triggerId: this.getNode().id, source: evName === 'messages.upsert' && data.type !== 'append' ? 'live' : 'history', receivedAt: new Date().toISOString() } });
+                            }
+                        });
+                        return;
+                    }
                     if (evName === 'messages.upsert' &&
                         options.onlyRealMessages &&
                         data != null &&
@@ -388,7 +434,9 @@ class BaileyTrigger {
             });
         };
         const closeFunction = async () => {
+            recoveryActive = false;
             release();
+            await recoveryQueue;
         };
         return { closeFunction, manualTriggerFunction };
     }
