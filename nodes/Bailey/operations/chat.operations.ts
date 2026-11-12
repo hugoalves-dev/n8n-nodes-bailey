@@ -21,7 +21,10 @@ async function executeChatOperation(sock, operation, i) {
         case 'unmute':
             await sock.chatModify({ mute: null }, jid);
             return { json: { success: true, jid, action: 'unmute' } };
-        case 'markRead': {
+        case 'markRead':
+            await sock.chatModify({ markRead: true, lastMessages: [] }, jid);
+            return { json: { success: true, jid, action: 'markRead' } };
+        case 'markChatReadThroughMessage': {
             let lastMessage;
             try {
                 lastMessage = JSON.parse(this.getNodeParameter('lastMessage', i));
@@ -49,7 +52,7 @@ async function executeChatOperation(sock, operation, i) {
             }
             lastMessage.messageTimestamp = timestamp;
             await sock.chatModify({ markRead: true, lastMessages: [lastMessage] }, jid);
-            return { json: { success: true, jid, action: 'markRead', messageId: key.id } };
+            return { json: { success: true, jid, action: 'markChatReadThroughMessage', messageId: key.id } };
         }
         case 'markMessageRead': {
             let messageKey;
