@@ -36,7 +36,7 @@ export const chatFields = [
         displayOptions: {
             show: {
                 resource: ['chat'],
-                operation: ['archive', 'unarchive', 'mute', 'unmute', 'markRead', 'markMessageRead', 'markUnread', 'pin', 'unpin', 'deleteChat', 'clearChat'],
+                operation: ['archive', 'unarchive', 'mute', 'unmute', 'markRead', 'markChatReadThroughMessage', 'markMessageRead', 'markUnread', 'pin', 'unpin', 'deleteChat', 'clearChat'],
             },
         },
         description: 'JID of the chat to modify',
