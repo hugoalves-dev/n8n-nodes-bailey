@@ -6,6 +6,7 @@ const n8n_workflow_1 = require("n8n-workflow");
 const ConnectionPool_1 = require("./transport/ConnectionPool");
 const RecoveryDescription_1 = require("./descriptions/RecoveryDescription");
 const RecoveryStore_1 = require("./transport/RecoveryStore");
+const ChatArchiveStore_1 = require("./transport/ChatArchiveStore");
 const RecoveryOperation_1 = require("./operations/recovery.operations");
 const AuthStateStore_1 = require("./transport/AuthStateStore");
 const path = require("path");
@@ -137,6 +138,13 @@ class Bailey {
                     const store = new RecoveryStore_1.RecoveryStore(dir, credentials.sessionId, `${workflowId}:${triggerId}`);
                     result = await RecoveryOperation_1.executeRecoveryOperation.call(this, store, operation, i);
                     result.pairedItem = i;
+                    returnData.push(result);
+                    continue;
+                }
+                if (resource === 'chat' && operation === 'getArchiveState') {
+                    const directory = (0, AuthStateStore_1.sessionDirFromConfig)(credentials.authDataPath ?? '~/.n8n/baileys', credentials.sessionId);
+                    const store = new ChatArchiveStore_1.ChatArchiveStore(directory);
+                    result = { json: await store.snapshot(), pairedItem: i };
                     returnData.push(result);
                     continue;
                 }
