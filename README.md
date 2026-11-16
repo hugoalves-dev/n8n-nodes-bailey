@@ -26,6 +26,16 @@ After a QR scan, Baileys v7 may emit `connection: open` without setting `creds.r
 
 The **History Sync** event can be selected in Bailey Trigger. **User → Fetch Message History** requires a known message key (`remoteJid`, `id`, `fromMe`) and a positive Unix timestamp. It requests history asynchronously; results arrive through `messaging-history.set` and can be partial or absent. The caller must persist cursors, deduplicate and handle incomplete recovery; requesting history does not guarantee recovery or downstream notification.
 
+### Persistent chat archive state (v0.4.1)
+
+The connection pool captures explicit `archived: true/false` flags from `chats.upsert`, `chats.update`, and `messaging-history.set`, even when no workflow Trigger is registered yet. It persists just the JID, archive flag, and last observed timestamp at `<auth path>/<sessionId>/chat-archive-state.json`. This state survives normal socket reconnections and n8n restarts if the session volume is persistent.
+
+For a Trigger listening to **All Events** or **Chat Updated**, activation replays known archive states once as a `chats.update` event. The event includes `data: [{ jid, archived, updated_at }, ...]` and `_chatArchiveSnapshot.coverage = "partial_or_unknown"`. Existing workflows that upsert `chats.update` into n8n Data Tables can backfill from this replay. The new **Chat → Get Known Chat Archive State** action returns the snapshot and counts on demand, without modifying any WhatsApp chats.
+
+Only *observed* archive flags are saved. Missing chats and updates without an archive flag are **unknown**, not unarchived. The node does **not** claim to discover all previously archived chats from an already-paired device: WhatsApp decides which history is delivered. `syncFullHistory` is an opt-in credential/socket setting that increases initial load and memory use, not a guaranteed on-demand list of all chats. Do not delete or re-pair a production session just to populate this cache. A snapshot can be empty or incomplete until WhatsApp delivers history or chat updates.
+
+**Chat → Mark Chat Read Through Message** now derives the target JID from the message key, fixing the missing hidden `jid` parameter in that operation.
+
 ### Durable message recovery (opt-in)
 
 Enable **Durable Message Recovery** on a saved Bailey Trigger configured for **Message Received** or **All Events**. The Trigger stores messages received from `messages.upsert` and `messaging-history.set` before emitting them and deduplicates by session, workflow, trigger, conversation, message ID, direction and participant. The `_recovery` object reports the trigger ID and origin; pending entries also include the time and original source. Only data actually delivered by WhatsApp can be stored. History requests are complementary and may be incomplete or unavailable; the node does not automatically retrieve all messages missed during an outage.

@@ -4,14 +4,18 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 export { executeChatOperation };
 const n8n_workflow_1 = require("n8n-workflow");
-async function executeChatOperation(sock, operation, i) {
-    const jid = this.getNodeParameter('jid', i);
+const ConnectionPool_1 = require("../transport/ConnectionPool");
+async function executeChatOperation(sock, operation, i, credentials) {
+    const entry = (0, ConnectionPool_1.getPoolEntry)(credentials.sessionId);
+    let jid = operation === 'markChatReadThroughMessage' ? null : this.getNodeParameter('jid', i);
     switch (operation) {
         case 'archive':
             await sock.chatModify({ archive: true, lastMessages: [] }, jid);
+            await entry?.chatArchiveStore?.record('chats.update', [{ id: jid, archived: true }]);
             return { json: { success: true, jid, action: 'archive' } };
         case 'unarchive':
             await sock.chatModify({ archive: false, lastMessages: [] }, jid);
+            await entry?.chatArchiveStore?.record('chats.update', [{ id: jid, archived: false }]);
             return { json: { success: true, jid, action: 'unarchive' } };
         case 'mute': {
             const muteDuration = this.getNodeParameter('muteDuration', i, 86400000);
@@ -35,11 +39,12 @@ async function executeChatOperation(sock, operation, i) {
                 });
             }
             const key = lastMessage?.key;
+            jid = key?.remoteJid;
             const timestamp = Number(lastMessage?.messageTimestamp);
             if (!key
                 || typeof key !== 'object'
                 || typeof key.remoteJid !== 'string'
-                || key.remoteJid !== jid
+                || !jid
                 || typeof key.fromMe !== 'boolean'
                 || typeof key.id !== 'string'
                 || !key.id

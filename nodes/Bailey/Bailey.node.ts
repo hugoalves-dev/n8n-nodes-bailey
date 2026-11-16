@@ -6,6 +6,7 @@ const n8n_workflow_1 = require("n8n-workflow");
 const ConnectionPool_1 = require("./transport/ConnectionPool");
 const RecoveryDescription_1 = require("./descriptions/RecoveryDescription");
 const RecoveryStore_1 = require("./transport/RecoveryStore");
+const ChatArchiveStore_1 = require("./transport/ChatArchiveStore");
 const RecoveryOperation_1 = require("./operations/recovery.operations");
 const AuthStateStore_1 = require("./transport/AuthStateStore");
 const path = require("path");
@@ -140,6 +141,13 @@ class Bailey {
                     returnData.push(result);
                     continue;
                 }
+                if (resource === 'chat' && operation === 'getArchiveState') {
+                    const directory = (0, AuthStateStore_1.sessionDirFromConfig)(credentials.authDataPath ?? '~/.n8n/baileys', credentials.sessionId);
+                    const store = new ChatArchiveStore_1.ChatArchiveStore(directory);
+                    result = { json: await store.snapshot(), pairedItem: i };
+                    returnData.push(result);
+                    continue;
+                }
                 sock ??= await (0, ConnectionPool_1.getOrCreateConnection)(credentials);
                 switch (resource) {
                     case 'message':
@@ -149,7 +157,7 @@ class Bailey {
                         result = await media_operations_1.executeMediaOperation.call(this, sock, operation, i);
                         break;
                     case 'chat':
-                        result = await chat_operations_1.executeChatOperation.call(this, sock, operation, i);
+                        result = await chat_operations_1.executeChatOperation.call(this, sock, operation, i, credentials);
                         break;
                     case 'user':
                         result = await user_operations_1.executeUserOperation.call(this, sock, operation, i);

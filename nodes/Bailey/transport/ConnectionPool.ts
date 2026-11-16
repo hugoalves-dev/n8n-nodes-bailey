@@ -45,6 +45,7 @@ export { getSessionSubscriptionStatus };
 const baileys_1 = __importStar(require("@whiskeysockets/baileys"));
 const AuthStateStore_1 = require("./AuthStateStore");
 const MessageCache_1 = require("./MessageCache");
+const ChatArchiveStore_1 = require("./ChatArchiveStore");
 const TransportPolicy_1 = require("./TransportPolicy");
 const pool = new Map();
 const DEFAULT_IDLE_TIMEOUT_MS = 30000;
@@ -134,6 +135,7 @@ async function createConnection(credentials, idleTimeoutMs, cacheSize, keepAlive
     const sessionDir = (0, AuthStateStore_1.sessionDirFromConfig)(authDataPath !== null && authDataPath !== void 0 ? authDataPath : '~/.n8n/baileys', sessionId);
     const { creds, keys, saveCreds } = await (0, AuthStateStore_1.useFileAuthState)(sessionDir);
     const messageCache = new MessageCache_1.MessageCache(cacheSize);
+    const chatArchiveStore = new ChatArchiveStore_1.ChatArchiveStore(sessionDir);
     const socketConfig = {
         auth: {
             creds,
@@ -184,6 +186,17 @@ async function createConnection(credentials, idleTimeoutMs, cacheSize, keepAlive
             }
         }
     });
+    // Store archive metadata even when no Trigger is listening, including history chunks
+    // arriving before a workflow subscribes. Never store entire history message payloads.
+    for (const event of ['chats.upsert', 'chats.update', 'chats.delete', 'messaging-history.set']) {
+        sock.ev.on(event, (data) => {
+            const active = pool.get(sessionId);
+            if (!active || active.socket !== sock) return;
+            void chatArchiveStore.record(event, data).catch((error) => {
+                console.error('[Bailey] Could not persist chat archive state:', error);
+            });
+        });
+    }
     let initialConnectionState = {};
     sock.ev.on('connection.update', (update) => {
         var _a, _b, _c;
@@ -246,6 +259,7 @@ async function createConnection(credentials, idleTimeoutMs, cacheSize, keepAlive
     const entry = {
         socket: sock,
         messageCache,
+        chatArchiveStore,
         lastUsed: Date.now(),
         idleTimer: creds.registered && !keepAlive ? scheduleIdle(sessionId, idleTimeoutMs) : null,
         authTimer: creds.registered ? null : scheduleAuthTimeout(sessionId, sock),
