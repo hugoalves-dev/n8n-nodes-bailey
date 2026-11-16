@@ -343,9 +343,33 @@ class BaileyTrigger {
                 emit('messages.upsert', { type: 'append', messages: batch.map((entry) => entry.message), _recovery: { triggerId: this.getNode().id, source: 'pending', entries: batch.map((entry) => ({ key: entry.key, origin: entry.origin, receivedAt: entry.receivedAt })) } });
             }
         });
+        let archiveReplayActive = true;
+        let archiveSnapshotReplayed = false;
         const release = await (0, ConnectionPool_1.subscribeToSession)(credentials, (socket) => {
             sock = socket;
             const cleanups = [];
+            // Re-emit the durable snapshot once on activation, not on every socket reconnect.
+            // Live chats.update and messaging-history.set continue to flow normally.
+            if (!archiveSnapshotReplayed && (event === '*' || event === 'chats.update')) {
+                archiveSnapshotReplayed = true;
+                const store = (0, ConnectionPool_1.getPoolEntry)(sessionId)?.chatArchiveStore;
+                if (store) {
+                    void store.snapshot().then((snapshot) => {
+                        if (!archiveReplayActive || snapshot.chats.length === 0) return;
+                        emit('chats.update', {
+                            data: snapshot.chats,
+                            _chatArchiveSnapshot: {
+                                source: 'persistent',
+                                knownChatCount: snapshot.knownChatCount,
+                                archivedCount: snapshot.archivedCount,
+                                coverage: snapshot.coverage,
+                            },
+                        });
+                    }).catch((error) => {
+                        if (archiveReplayActive) this.emitError(error instanceof Error ? error : new Error(String(error)));
+                    });
+                }
+            }
             if (!isRegistered && credentials.authMethod === 'qrCode' && this.getMode() === 'manual') {
                 const qrHandler = (update) => {
                     if (update.qr && this.getMode() === 'manual') {
@@ -434,6 +458,7 @@ class BaileyTrigger {
             });
         };
         const closeFunction = async () => {
+            archiveReplayActive = false;
             recoveryActive = false;
             release();
             await recoveryQueue;
