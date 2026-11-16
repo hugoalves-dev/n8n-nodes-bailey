@@ -7,12 +7,6 @@ const n8n_workflow_1 = require("n8n-workflow");
 const ConnectionPool_1 = require("../transport/ConnectionPool");
 async function executeChatOperation(sock, operation, i, credentials) {
     const entry = (0, ConnectionPool_1.getPoolEntry)(credentials.sessionId);
-    if (operation === 'getArchiveState') {
-        if (!entry?.chatArchiveStore) {
-            throw new n8n_workflow_1.NodeOperationError(this.getNode(), 'Chat archive state is unavailable for this session.', { itemIndex: i });
-        }
-        return { json: await entry.chatArchiveStore.snapshot() };
-    }
     let jid = operation === 'markChatReadThroughMessage' ? null : this.getNodeParameter('jid', i);
     switch (operation) {
         case 'archive':
