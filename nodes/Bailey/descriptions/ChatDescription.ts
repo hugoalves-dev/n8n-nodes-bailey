@@ -13,6 +13,7 @@ export const chatOperations = [
             { name: 'Archive', value: 'archive', action: 'Archive a chat' },
             { name: 'Clear Chat', value: 'clearChat', action: 'Clear all messages in a chat' },
             { name: 'Delete Chat', value: 'deleteChat', action: 'Delete an entire chat' },
+            { name: 'Get Known Chat Archive State', value: 'getArchiveState', action: 'Get persisted known chat archive states' },
             { name: 'Mark Chat Read Through Message', value: 'markChatReadThroughMessage', action: 'Mark chat read through a specific message' },
             { name: 'Mark Message Read', value: 'markMessageRead', action: 'Mark an individual message as read' },
             { name: 'Mark Read', value: 'markRead', action: 'Mark chat as read' },
