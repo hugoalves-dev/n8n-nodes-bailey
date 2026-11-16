@@ -1,6 +1,7 @@
 const mockGetOrCreateConnection = jest.fn();
 const mockGetPoolEntry = jest.fn();
 const mockGetSessionSubscriptionStatus = jest.fn(() => ({ registered: 0, bound: 0 }));
+const mockListSessionSubscriptionStatuses = jest.fn((): unknown[] => []);
 const mockWaitForAuthPrompt = jest.fn();
 const mockQrToBuffer = jest.fn();
 const mockQrToString = jest.fn();
@@ -9,6 +10,7 @@ jest.mock('../../nodes/Bailey/transport/ConnectionPool', () => ({
 	getOrCreateConnection: (...args: unknown[]) => mockGetOrCreateConnection(...args),
 	getPoolEntry: (...args: unknown[]) => mockGetPoolEntry(...args),
 	getSessionSubscriptionStatus: (...args: unknown[]) => mockGetSessionSubscriptionStatus(...args as []),
+	listSessionSubscriptionStatuses: () => mockListSessionSubscriptionStatuses(),
 }));
 jest.mock('../../nodes/Bailey/transport/AuthSetupService', () => ({
 	waitForAuthPrompt: (...args: unknown[]) => mockWaitForAuthPrompt(...args),
@@ -80,6 +82,19 @@ describe('Bailey Auth node output', () => {
 		mockGetSessionSubscriptionStatus.mockReturnValueOnce({ registered: 1, bound: 0 });
 		const { result } = await execute('pairingCode', 'checkStatus');
 		expect(result[0][0]).toMatchObject({ json: { authenticated: true, connection: 'open', triggerSubscriptions: { registered: 1, bound: 0 } } });
+	});
+
+	it('marks subscription counts as process-local and exposes triggers bound to other sessions', async () => {
+		mockGetPoolEntry.mockReturnValue({ authRegistered: true, connectionState: { connection: 'open' } });
+		mockListSessionSubscriptionStatuses.mockReturnValueOnce([
+			{ sessionId: 'old-session', registered: 1, bound: 0 },
+			{ sessionId: 'test-session', registered: 0, bound: 0 },
+		]);
+		const { result } = await execute('pairingCode', 'checkStatus');
+		expect(result[0][0]).toMatchObject({ json: {
+			triggerSubscriptions: { registered: 0, bound: 0, scope: 'process' },
+			otherSessionSubscriptions: [{ sessionId: 'old-session', registered: 1, bound: 0 }],
+		} });
 	});
 
 	it('logs a live pairing code and returns only the final auth state', async () => {

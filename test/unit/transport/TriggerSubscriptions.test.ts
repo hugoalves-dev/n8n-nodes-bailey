@@ -96,3 +96,49 @@ it('reports registered and currently bound triggers separately from socket state
 	expect(getSessionSubscriptionStatus(credentials.sessionId)).toEqual({ registered: 0, bound: 0 });
 	jest.useRealTimers();
 });
+
+it('notifies subscribers when the session ends permanently but not on transient restarts', async () => {
+	jest.useFakeTimers();
+	const credentials = { sessionId: 'terminal-close-test' };
+	const onSessionEnded = jest.fn();
+	const release = await subscribeToSession(credentials, () => () => {}, { onSessionEnded });
+	sockets[sockets.length - 1].ev.emit('connection.update', { connection: 'close', lastDisconnect: { error: { output: { statusCode: 515 } } } });
+	await jest.advanceTimersByTimeAsync(3000);
+	expect(onSessionEnded).not.toHaveBeenCalled();
+	sockets[sockets.length - 1].ev.emit('connection.update', { connection: 'close', lastDisconnect: { error: { output: { statusCode: 401 } } } });
+	expect(onSessionEnded).toHaveBeenCalledTimes(1);
+	expect(onSessionEnded.mock.calls[0][0]).toMatchObject({ statusCode: 401 });
+	release();
+	jest.useRealTimers();
+});
+
+it('reports a logged-out session as a trigger error so n8n re-activates it with current credentials', async () => {
+	jest.useFakeTimers();
+	const { BaileyTrigger } = await import('../../../nodes/Bailey/BaileyTrigger.node');
+	const emitError = jest.fn();
+	const context = {
+		getCredentials: async () => ({ sessionId: 'trigger-logged-out' }),
+		getNodeParameter: (_: string, fallback: unknown) => fallback,
+		getMode: () => 'trigger', emit: jest.fn(), emitError,
+		helpers: { returnJsonArray: (value: unknown) => value },
+		logger: { info: jest.fn(), error: jest.fn() },
+	};
+	const trigger = await BaileyTrigger.prototype.trigger.call(context as never);
+	sockets[sockets.length - 1].ev.emit('connection.update', { connection: 'close', lastDisconnect: { error: { output: { statusCode: 401 } } } });
+	expect(emitError).toHaveBeenCalledTimes(1);
+	expect(String(emitError.mock.calls[0][0].message)).toMatch(/logged out/i);
+	await trigger.closeFunction();
+	jest.useRealTimers();
+});
+
+it('lists trigger subscriptions of every session in this process', async () => {
+	const { listSessionSubscriptionStatuses } = await import('../../../nodes/Bailey/transport/ConnectionPool');
+	const releaseOld = await subscribeToSession({ sessionId: 'list-old-session' }, () => () => {});
+	const releaseNew = await subscribeToSession({ sessionId: 'list-new-session' }, () => () => {});
+	expect(listSessionSubscriptionStatuses()).toEqual(expect.arrayContaining([
+		{ sessionId: 'list-old-session', registered: 1, bound: 1 },
+		{ sessionId: 'list-new-session', registered: 1, bound: 1 },
+	]));
+	releaseOld(); releaseNew();
+	expect(listSessionSubscriptionStatuses().map((status) => status.sessionId)).not.toContain('list-old-session');
+});
