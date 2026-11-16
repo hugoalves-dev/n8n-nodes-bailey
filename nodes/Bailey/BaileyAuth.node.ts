@@ -1,7 +1,7 @@
 import type { IExecuteFunctions, INodeExecutionData, INodeType, INodeTypeDescription } from 'n8n-workflow';
 import { NodeConnectionTypes } from 'n8n-workflow';
 import * as QRCode from 'qrcode';
-import { getOrCreateConnection, getPoolEntry, getSessionSubscriptionStatus } from './transport/ConnectionPool';
+import { getOrCreateConnection, getPoolEntry, getSessionSubscriptionStatus, listSessionSubscriptionStatuses } from './transport/ConnectionPool';
 import { waitForAuthPrompt } from './transport/AuthSetupService';
 import { normalizePhoneNumber } from './transport/TransportPolicy';
 
@@ -49,7 +49,11 @@ class BaileyAuth implements INodeType {
 			const entry = getPoolEntry(sessionId);
 			const connection = entry?.connectionState?.connection ?? 'unknown';
 			const authenticated = entry?.authRegistered === true && connection === 'open';
-			return [[{ json: { sessionId, authenticated, authStatus: authenticated ? 'authenticated' : 'pending', connection, triggerSubscriptions: getSessionSubscriptionStatus(sessionId) } }]];
+			// Subscription counts only cover this n8n process. Triggers still bound to another session
+			// (for example after re-pairing under a new session ID) are listed so the mismatch is visible.
+			const triggerSubscriptions = { ...getSessionSubscriptionStatus(sessionId), scope: 'process' };
+			const otherSessionSubscriptions = listSessionSubscriptionStatuses().filter((status) => status.sessionId !== sessionId);
+			return [[{ json: { sessionId, authenticated, authStatus: authenticated ? 'authenticated' : 'pending', connection, triggerSubscriptions, otherSessionSubscriptions } }]];
 		}
 
 		const socket = await getOrCreateConnection(credentials as never, operation === 'startPairing');

@@ -42,28 +42,40 @@ export { deregisterSocket };
 export { getPoolEntry };
 export { subscribeToSession };
 export { getSessionSubscriptionStatus };
+export { listSessionSubscriptionStatuses };
 const baileys_1 = __importStar(require("@whiskeysockets/baileys"));
 const AuthStateStore_1 = require("./AuthStateStore");
 const MessageCache_1 = require("./MessageCache");
 const ChatArchiveStore_1 = require("./ChatArchiveStore");
 const TransportPolicy_1 = require("./TransportPolicy");
-const pool = new Map();
+// n8n clears require.cache when a community package is installed or updated at runtime, so
+// already-active triggers keep the previous module copy while new executions load a fresh one.
+// Keep pool state process-wide so every copy sees the same sockets and trigger subscriptions.
+const POOL_STATE_KEY = Symbol.for('@hugoalves-dev/n8n-nodes-bailey/connection-pool/v1');
+const poolState = globalThis[POOL_STATE_KEY] ??= {
+    pool: new Map(),
+    pendingConnections: new Map(),
+    reconnectTimers: new Map(),
+    sessionSubscriptions: new Map(),
+};
+const { pool, pendingConnections, reconnectTimers, sessionSubscriptions } = poolState;
 const DEFAULT_IDLE_TIMEOUT_MS = 30000;
 const AUTHENTICATION_TIMEOUT_MS = 5 * 60 * 1000;
-const pendingConnections = new Map();
-const reconnectTimers = new Map();
-const sessionSubscriptions = new Map();
 
 function getSessionSubscriptionStatus(sessionId) {
     const subscriptions = sessionSubscriptions.get(sessionId);
     const socket = pool.get(sessionId)?.socket;
     return { registered: subscriptions?.size ?? 0, bound: socket ? [...(subscriptions ?? [])].filter((subscription) => subscription.socket === socket).length : 0 };
 }
-async function subscribeToSession(credentials, bind) {
+// Counts are local to this n8n process: a trigger hosted by another process is not visible here.
+function listSessionSubscriptionStatuses() {
+    return [...sessionSubscriptions.keys()].map((sessionId) => ({ sessionId, ...getSessionSubscriptionStatus(sessionId) }));
+}
+async function subscribeToSession(credentials, bind, { onSessionEnded } = {}) {
     const sessionId = credentials.sessionId;
     let subscriptions = sessionSubscriptions.get(sessionId);
     if (!subscriptions) sessionSubscriptions.set(sessionId, subscriptions = new Set());
-    const subscription = { bind, cleanup: null, socket: null };
+    const subscription = { bind, cleanup: null, socket: null, onSessionEnded };
     subscriptions.add(subscription);
     try {
         const socket = await getOrCreateConnection(credentials, true);
@@ -99,6 +111,13 @@ function unbindSessionSubscriptions(sessionId, socket) {
         subscription.cleanup?.();
         subscription.cleanup = null;
         subscription.socket = null;
+    }
+}
+// The session will not reconnect by itself (logout or expired pairing). Subscribers must
+// surface it, otherwise an active trigger silently stays bound to a dead session.
+function notifySessionEnded(sessionId, details) {
+    for (const subscription of [...(sessionSubscriptions.get(sessionId) ?? [])]) {
+        subscription.onSessionEnded?.(details);
     }
 }
 async function getOrCreateConnection(credentials, keepAlive = false) {
@@ -253,6 +272,10 @@ async function createConnection(credentials, idleTimeoutMs, cacheSize, keepAlive
             }
             else {
                 pool.delete(sessionId);
+                notifySessionEnded(sessionId, {
+                    statusCode,
+                    reason: currentEntry.authenticationTimedOut ? 'authenticationTimedOut' : 'loggedOut',
+                });
             }
         }
     });
