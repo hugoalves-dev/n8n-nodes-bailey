@@ -149,7 +149,7 @@ class Bailey {
                         result = await media_operations_1.executeMediaOperation.call(this, sock, operation, i);
                         break;
                     case 'chat':
-                        result = await chat_operations_1.executeChatOperation.call(this, sock, operation, i);
+                        result = await chat_operations_1.executeChatOperation.call(this, sock, operation, i, credentials);
                         break;
                     case 'user':
                         result = await user_operations_1.executeUserOperation.call(this, sock, operation, i);
