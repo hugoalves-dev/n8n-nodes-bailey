@@ -21,6 +21,7 @@ it('rebinds two independent subscriptions across reconnects and closes only afte
 	const releaseSecond = await subscribeToSession(credentials, socket => { socket.ev.on('messages.upsert', second); return () => socket.ev.off('messages.upsert', second); });
 	for (let i = 0; i < 2; i++) {
 		const old = sockets[sockets.length - 1];
+		old.ev.emit('connection.update', { connection: 'open' });
 		old.ev.emit('connection.update', { connection: 'close', lastDisconnect: { error: { output: { statusCode: 515 } } } });
 		await jest.advanceTimersByTimeAsync(3000);
 		old.ev.emit('messages.upsert', { messages: [] });

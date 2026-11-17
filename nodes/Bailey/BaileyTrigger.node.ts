@@ -448,10 +448,10 @@ class BaileyTrigger {
             // n8n keeps unchanged triggers running across republishes and does not re-run them when a
             // credential changes. Reporting the error makes n8n re-activate the trigger, which reads the
             // current credentials (for example a newly paired session) instead of waiting forever.
-            onSessionEnded: ({ statusCode, reason }) => {
+            onSessionEnded: ({ statusCode, reason, detail: cause }) => {
                 const detail = reason === 'authenticationTimedOut'
                     ? 'authentication timed out'
-                    : `logged out (code ${statusCode ?? 'unknown'})`;
+                    : `logged out (code ${statusCode ?? 'unknown'}${cause ? `, ${cause}` : ''})`;
                 this.emitError(new Error(`[Bailey] WhatsApp session "${sessionId}" ${detail}; the trigger stopped receiving events. Pair the session again or update the credential.`));
             },
         });

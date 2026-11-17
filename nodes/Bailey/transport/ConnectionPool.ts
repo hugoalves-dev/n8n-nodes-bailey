@@ -43,6 +43,9 @@ export { getPoolEntry };
 export { subscribeToSession };
 export { getSessionSubscriptionStatus };
 export { listSessionSubscriptionStatuses };
+export { getLastDisconnect };
+export { getSessionEnded };
+export { SessionLoggedOutError };
 const baileys_1 = __importStar(require("@whiskeysockets/baileys"));
 const AuthStateStore_1 = require("./AuthStateStore");
 const MessageCache_1 = require("./MessageCache");
@@ -58,8 +61,46 @@ const poolState = globalThis[POOL_STATE_KEY] ??= {
     reconnectTimers: new Map(),
     sessionSubscriptions: new Map(),
 };
-const { pool, pendingConnections, reconnectTimers, sessionSubscriptions } = poolState;
+// Added after v1 shipped: an older module copy may have created poolState without these maps.
+poolState.endedSessions ??= new Map();
+poolState.lastDisconnects ??= new Map();
+poolState.reconnectAttempts ??= new Map();
+const { pool, pendingConnections, reconnectTimers, sessionSubscriptions, endedSessions, lastDisconnects, reconnectAttempts } = poolState;
 const DEFAULT_IDLE_TIMEOUT_MS = 30000;
+const RECONNECT_BASE_DELAY_MS = 3000;
+const RECONNECT_MAX_DELAY_MS = 5 * 60 * 1000;
+
+class SessionLoggedOutError extends Error {
+    constructor(sessionId, details) {
+        const detail = details.detail ? `, ${details.detail}` : '';
+        super(`[Bailey] WhatsApp session "${sessionId}" was logged out (code ${details.statusCode ?? 'unknown'}${detail}) at ${details.at}. Pair it again: delete the session directory or use a new session ID in the credential, then re-activate the workflow.`);
+        this.name = 'SessionLoggedOutError';
+        this.sessionId = sessionId;
+        this.details = details;
+    }
+}
+// Identifies one pairing. A new pairing (fresh session directory) always generates a new key.
+function credsFingerprint(creds) {
+    return creds?.advSecretKey ?? null;
+}
+function describeDisconnect(lastDisconnect) {
+    const error = lastDisconnect?.error;
+    const content = Array.isArray(error?.data?.content) ? error.data.content[0] : undefined;
+    return {
+        statusCode: error?.output?.statusCode ?? null,
+        reason: typeof error?.message === 'string' ? error.message : null,
+        detail: content?.attrs?.type ?? content?.tag ?? null,
+        at: new Date().toISOString(),
+    };
+}
+function getLastDisconnect(sessionId) {
+    const details = lastDisconnects.get(sessionId);
+    return details ? { ...details } : null;
+}
+function getSessionEnded(sessionId) {
+    const ended = endedSessions.get(sessionId);
+    return ended ? { ...ended.details } : null;
+}
 const AUTHENTICATION_TIMEOUT_MS = 5 * 60 * 1000;
 
 function getSessionSubscriptionStatus(sessionId) {
@@ -153,6 +194,15 @@ async function createConnection(credentials, idleTimeoutMs, cacheSize, keepAlive
     const { sessionId, authDataPath, syncFullHistory, markOnlineOnConnect, browserName, proxyUrl } = credentials;
     const sessionDir = (0, AuthStateStore_1.sessionDirFromConfig)(authDataPath !== null && authDataPath !== void 0 ? authDataPath : '~/.n8n/baileys', sessionId);
     const { creds, keys, saveCreds } = await (0, AuthStateStore_1.useFileAuthState)(sessionDir);
+    // WhatsApp revoked these credentials. Connecting again only earns another 401 and, when a
+    // re-activated trigger does it in a loop, gets the account flagged. Wait for a new pairing.
+    const ended = endedSessions.get(sessionId);
+    if (ended) {
+        if (ended.fingerprint !== null && ended.fingerprint === credsFingerprint(creds)) {
+            throw new SessionLoggedOutError(sessionId, ended.details);
+        }
+        endedSessions.delete(sessionId);
+    }
     const messageCache = new MessageCache_1.MessageCache(cacheSize);
     const chatArchiveStore = new ChatArchiveStore_1.ChatArchiveStore(sessionDir);
     const socketConfig = {
@@ -226,6 +276,7 @@ async function createConnection(credentials, idleTimeoutMs, cacheSize, keepAlive
         entry.connectionState = { ...entry.connectionState, ...update };
         const { connection, lastDisconnect } = update;
         if (connection === 'open') {
+            reconnectAttempts.delete(sessionId);
             // Baileys v7 can leave registered=false after QR pairing even when
             // CB:success confirms the login. QR/isNewLogin alone is insufficient.
             if (!creds.registered) {
@@ -250,10 +301,16 @@ async function createConnection(credentials, idleTimeoutMs, cacheSize, keepAlive
             unbindSessionSubscriptions(sessionId, sock);
             const statusCode = (_b = (_a = lastDisconnect === null || lastDisconnect === void 0 ? void 0 : lastDisconnect.error) === null || _a === void 0 ? void 0 : _a.output) === null || _b === void 0 ? void 0 : _b.statusCode;
             const shouldReconnect = statusCode !== baileys_1.DisconnectReason.loggedOut && !(currentEntry === null || currentEntry === void 0 ? void 0 : currentEntry.authenticationTimedOut);
+            const disconnect = describeDisconnect(lastDisconnect);
+            lastDisconnects.set(sessionId, { ...disconnect, loggedOut: statusCode === baileys_1.DisconnectReason.loggedOut });
             if (shouldReconnect) {
                 pool.delete(sessionId);
                 const previousTimer = reconnectTimers.get(sessionId);
                 if (previousTimer) clearTimeout(previousTimer);
+                // Closes without an open in between back off exponentially; an open resets it.
+                const attempt = reconnectAttempts.get(sessionId) ?? 0;
+                reconnectAttempts.set(sessionId, attempt + 1);
+                const delay = Math.min(RECONNECT_BASE_DELAY_MS * 2 ** attempt, RECONNECT_MAX_DELAY_MS);
                 const t = setTimeout(() => {
                     reconnectTimers.delete(sessionId);
                     if (pool.has(sessionId)) return;
@@ -266,15 +323,22 @@ async function createConnection(credentials, idleTimeoutMs, cacheSize, keepAlive
                         }
                     }).catch(() => {
                     });
-                }, 3000);
+                }, delay);
                 reconnectTimers.set(sessionId, t);
                 (_c = t.unref) === null || _c === void 0 ? void 0 : _c.call(t);
             }
             else {
                 pool.delete(sessionId);
+                reconnectAttempts.delete(sessionId);
+                if (statusCode === baileys_1.DisconnectReason.loggedOut) {
+                    // Must be recorded before subscribers hear about it: n8n re-activates the trigger
+                    // synchronously from emitError, and that activation has to be refused.
+                    endedSessions.set(sessionId, { fingerprint: credsFingerprint(creds), details: disconnect });
+                }
                 notifySessionEnded(sessionId, {
                     statusCode,
                     reason: currentEntry.authenticationTimedOut ? 'authenticationTimedOut' : 'loggedOut',
+                    detail: disconnect.detail,
                 });
             }
         }
