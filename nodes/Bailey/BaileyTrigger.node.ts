@@ -318,6 +318,20 @@ class BaileyTrigger {
             }
             this.emit([this.helpers.returnJsonArray([payload])]);
         };
+        // Adds the name saved in the phone's address book. In groups only the sender is looked up,
+        // never the group JID, so a group subject is not mistaken for a person.
+        const withContactNames = (messages) => {
+            const store = (0, ConnectionPool_1.getPoolEntry)(sessionId)?.contactNameStore;
+            if (!store || !Array.isArray(messages)) return messages;
+            return messages.map((message) => {
+                const key = message?.key ?? {};
+                const isGroup = typeof key.remoteJid === 'string' && key.remoteJid.endsWith('@g.us');
+                const name = store.lookup(isGroup
+                    ? [key.participant, key.participantAlt]
+                    : [key.remoteJid, key.remoteJidAlt]);
+                return name ? { ...message, _contactName: name } : message;
+            });
+        };
         const eventsToListen = event === '*' ? ALL_EVENTS.map((e) => e.value) : [event];
         if (options.durableRecovery && event !== '*' && event !== 'messages.upsert') {
             throw new n8n_workflow_1.NodeOperationError(this.getNode(), 'Durable Message Recovery requires Message Received or All Events.');
@@ -340,7 +354,7 @@ class BaileyTrigger {
             const pending = await recovery.pending();
             for (let offset = 0; offset < pending.length && recoveryActive; offset += 25) {
                 const batch = pending.slice(offset, offset + 25);
-                emit('messages.upsert', { type: 'append', messages: batch.map((entry) => entry.message), _recovery: { triggerId: this.getNode().id, source: 'pending', entries: batch.map((entry) => ({ key: entry.key, origin: entry.origin, receivedAt: entry.receivedAt })) } });
+                emit('messages.upsert', { type: 'append', messages: withContactNames(batch.map((entry) => entry.message)), _recovery: { triggerId: this.getNode().id, source: 'pending', entries: batch.map((entry) => ({ key: entry.key, origin: entry.origin, receivedAt: entry.receivedAt })) } });
             }
         });
         let archiveReplayActive = true;
@@ -421,7 +435,7 @@ class BaileyTrigger {
                                 if (await recovery.record(message, evName === 'messages.upsert' && data.type !== 'append' ? 'live' : 'history')) fresh.push(message);
                             }
                             for (let offset = 0; offset < fresh.length && recoveryActive; offset += 25) {
-                                emit('messages.upsert', { type: evName === 'messages.upsert' ? data.type : 'append', messages: fresh.slice(offset, offset + 25), _recovery: { triggerId: this.getNode().id, source: evName === 'messages.upsert' && data.type !== 'append' ? 'live' : 'history', receivedAt: new Date().toISOString() } });
+                                emit('messages.upsert', { type: evName === 'messages.upsert' ? data.type : 'append', messages: withContactNames(fresh.slice(offset, offset + 25)), _recovery: { triggerId: this.getNode().id, source: evName === 'messages.upsert' && data.type !== 'append' ? 'live' : 'history', receivedAt: new Date().toISOString() } });
                             }
                         });
                         return;
@@ -435,7 +449,11 @@ class BaileyTrigger {
                         const filtered = upsert.messages.filter((m) => { var _a; return !((_a = m.message) === null || _a === void 0 ? void 0 : _a.protocolMessage); });
                         if (filtered.length === 0)
                             return;
-                        emit(evName, { ...upsert, messages: filtered });
+                        emit(evName, { ...upsert, messages: withContactNames(filtered) });
+                        return;
+                    }
+                    if (evName === 'messages.upsert' && Array.isArray(data?.messages)) {
+                        emit(evName, { ...data, messages: withContactNames(data.messages) });
                         return;
                     }
                     emit(evName, data);

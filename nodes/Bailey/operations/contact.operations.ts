@@ -21,6 +21,14 @@ async function executeContactOperation(sock, operation, i) {
             await sock.removeContact(jid);
             return { json: { success: true, jid } };
         }
+        case 'resyncSavedNames': {
+            // Read-only: forget the local version of the contacts collection and download its
+            // snapshot again, which re-emits every saved name. No patch is sent to WhatsApp.
+            const collection = 'critical_unblock_low';
+            await sock.authState.keys.set({ 'app-state-sync-version': { [collection]: null } });
+            await sock.resyncAppState([collection], false);
+            return { json: { success: true, collection } };
+        }
         case 'requestPhoneNumber': {
             const jid = this.getNodeParameter('jid', i);
             const result = await sock.sendMessage(jid, { requestPhoneNumber: true });
