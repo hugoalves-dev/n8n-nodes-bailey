@@ -33,6 +33,13 @@ const startTrigger = async (sessionId: string) => {
 	return { trigger, emit, socket: sockets[sockets.length - 1] };
 };
 const flush = async () => { for (let i = 0; i < 10; i++) await new Promise((resolve) => setImmediate(resolve)); };
+// Background writes must finish before the session directory is removed.
+const settle = async (sessionId: string) => {
+	await flush();
+	const entry = getPoolEntry(sessionId);
+	await entry?.contactNameStore?.whenIdle();
+	await entry?.chatArchiveStore?.snapshot();
+};
 const emittedMessages = (emit: jest.Mock) => emit.mock.calls
 	.map((call) => call[0][0][0])
 	.filter((payload) => payload._event === 'messages.upsert')
@@ -52,6 +59,7 @@ it('adds the saved contact name to direct messages, matching LID or phone number
 	const messages = emittedMessages(emit);
 	expect(messages.map((message: { _contactName?: string }) => message._contactName)).toEqual(['RC | SONNITECH (Gabriel)', 'RC | SONNITECH (Gabriel)', undefined]);
 	expect(messages[0].pushName).toBe('Sonnitech');
+	await settle('contact-names-direct');
 	await trigger.closeFunction();
 });
 
@@ -68,6 +76,7 @@ it('uses the sender in groups and never the group subject', async () => {
 
 	const messages = emittedMessages(emit);
 	expect(messages.map((message: { _contactName?: string }) => message._contactName)).toEqual(['Kevin - JC', undefined]);
+	await settle('contact-names-group');
 	await trigger.closeFunction();
 });
 

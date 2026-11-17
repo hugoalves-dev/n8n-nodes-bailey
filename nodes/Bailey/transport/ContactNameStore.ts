@@ -67,6 +67,11 @@ export class ContactNameStore {
 		return undefined;
 	}
 
+	/** Resolves once every write queued so far has finished. */
+	async whenIdle(): Promise<void> {
+		await this.queue;
+	}
+
 	async record(event: 'contacts.upsert' | 'contacts.update' | 'messaging-history.set', payload: unknown): Promise<void> {
 		const names = extractNames(event, payload);
 		if (!Object.keys(names).length) return;
