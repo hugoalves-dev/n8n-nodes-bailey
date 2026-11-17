@@ -50,6 +50,7 @@ const baileys_1 = __importStar(require("@whiskeysockets/baileys"));
 const AuthStateStore_1 = require("./AuthStateStore");
 const MessageCache_1 = require("./MessageCache");
 const ChatArchiveStore_1 = require("./ChatArchiveStore");
+const ContactNameStore_1 = require("./ContactNameStore");
 const TransportPolicy_1 = require("./TransportPolicy");
 // n8n clears require.cache when a community package is installed or updated at runtime, so
 // already-active triggers keep the previous module copy while new executions load a fresh one.
@@ -205,6 +206,11 @@ async function createConnection(credentials, idleTimeoutMs, cacheSize, keepAlive
     }
     const messageCache = new MessageCache_1.MessageCache(cacheSize);
     const chatArchiveStore = new ChatArchiveStore_1.ChatArchiveStore(sessionDir);
+    const contactNameStore = new ContactNameStore_1.ContactNameStore(sessionDir);
+    // Loaded in the background: a disk read must not delay (re)connecting.
+    void contactNameStore.load().catch((error) => {
+        console.error('[Bailey] Could not load saved contact names:', error);
+    });
     const socketConfig = {
         auth: {
             creds,
@@ -263,6 +269,16 @@ async function createConnection(credentials, idleTimeoutMs, cacheSize, keepAlive
             if (!active || active.socket !== sock) return;
             void chatArchiveStore.record(event, data).catch((error) => {
                 console.error('[Bailey] Could not persist chat archive state:', error);
+            });
+        });
+    }
+    // Address-book names arrive mostly during the initial sync, possibly before any trigger subscribes.
+    for (const event of ['contacts.upsert', 'contacts.update', 'messaging-history.set']) {
+        sock.ev.on(event, (data) => {
+            const active = pool.get(sessionId);
+            if (!active || active.socket !== sock) return;
+            void contactNameStore.record(event, data).catch((error) => {
+                console.error('[Bailey] Could not persist contact names:', error);
             });
         });
     }
@@ -347,6 +363,7 @@ async function createConnection(credentials, idleTimeoutMs, cacheSize, keepAlive
         socket: sock,
         messageCache,
         chatArchiveStore,
+        contactNameStore,
         lastUsed: Date.now(),
         idleTimer: creds.registered && !keepAlive ? scheduleIdle(sessionId, idleTimeoutMs) : null,
         authTimer: creds.registered ? null : scheduleAuthTimeout(sessionId, sock),

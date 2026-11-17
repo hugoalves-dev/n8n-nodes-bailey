@@ -13,6 +13,7 @@ export const contactOperations = [
             { name: 'Add / Edit Contact', value: 'addOrEdit', action: 'Add or edit a contact' },
             { name: 'Remove Contact', value: 'remove', action: 'Remove a contact' },
             { name: 'Request Phone Number', value: 'requestPhoneNumber', action: 'Request phone number sharing' },
+            { name: 'Resync Saved Names', value: 'resyncSavedNames', action: 'Download saved contact names again', description: 'Read-only resync of the contacts collection so the trigger can add address-book names to messages' },
         ],
         default: 'addOrEdit',
     },
