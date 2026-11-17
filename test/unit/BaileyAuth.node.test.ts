@@ -2,6 +2,8 @@ const mockGetOrCreateConnection = jest.fn();
 const mockGetPoolEntry = jest.fn();
 const mockGetSessionSubscriptionStatus = jest.fn(() => ({ registered: 0, bound: 0 }));
 const mockListSessionSubscriptionStatuses = jest.fn((): unknown[] => []);
+const mockGetLastDisconnect = jest.fn((): unknown => null);
+const mockGetSessionEnded = jest.fn((): unknown => null);
 const mockWaitForAuthPrompt = jest.fn();
 const mockQrToBuffer = jest.fn();
 const mockQrToString = jest.fn();
@@ -11,6 +13,8 @@ jest.mock('../../nodes/Bailey/transport/ConnectionPool', () => ({
 	getPoolEntry: (...args: unknown[]) => mockGetPoolEntry(...args),
 	getSessionSubscriptionStatus: (...args: unknown[]) => mockGetSessionSubscriptionStatus(...args as []),
 	listSessionSubscriptionStatuses: () => mockListSessionSubscriptionStatuses(),
+	getLastDisconnect: () => mockGetLastDisconnect(),
+	getSessionEnded: () => mockGetSessionEnded(),
 }));
 jest.mock('../../nodes/Bailey/transport/AuthSetupService', () => ({
 	waitForAuthPrompt: (...args: unknown[]) => mockWaitForAuthPrompt(...args),
@@ -95,6 +99,24 @@ describe('Bailey Auth node output', () => {
 			triggerSubscriptions: { registered: 0, bound: 0, scope: 'process' },
 			otherSessionSubscriptions: [{ sessionId: 'old-session', registered: 1, bound: 0 }],
 		} });
+	});
+
+	it('reports a session logged out by WhatsApp with the disconnect reason', async () => {
+		const ended = { statusCode: 401, reason: 'Stream Errored (conflict)', detail: 'device_removed', at: '2026-11-17T12:25:30.526Z' };
+		mockGetPoolEntry.mockReturnValue(undefined);
+		mockGetSessionEnded.mockReturnValueOnce(ended);
+		mockGetLastDisconnect.mockReturnValueOnce({ ...ended, loggedOut: true });
+		const { result } = await execute('pairingCode', 'checkStatus');
+		expect(result[0][0]).toMatchObject({ json: {
+			authenticated: false, authStatus: 'loggedOut', connection: 'unknown',
+			sessionEnded: ended, lastDisconnect: { detail: 'device_removed', loggedOut: true },
+		} });
+	});
+
+	it('reports no disconnect details for a healthy session', async () => {
+		mockGetPoolEntry.mockReturnValue({ authRegistered: true, connectionState: { connection: 'open' } });
+		const { result } = await execute('pairingCode', 'checkStatus');
+		expect(result[0][0]).toMatchObject({ json: { authStatus: 'authenticated', sessionEnded: null, lastDisconnect: null } });
 	});
 
 	it('logs a live pairing code and returns only the final auth state', async () => {
