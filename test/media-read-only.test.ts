@@ -1,7 +1,8 @@
 import { executeMediaOperation } from '../nodes/Bailey/operations/media.operations';
+import { downloadMediaMessage as downloadMediaMessageOriginal } from '@whiskeysockets/baileys';
 
 jest.mock('@whiskeysockets/baileys', () => ({ downloadMediaMessage: jest.fn() }));
-const { downloadMediaMessage } = require('@whiskeysockets/baileys');
+const downloadMediaMessage = jest.mocked(downloadMediaMessageOriginal);
 
 describe('read-only media download', () => {
   const message = { message: { imageMessage: { mimetype: 'image/png' } } };
