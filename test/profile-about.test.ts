@@ -105,13 +105,20 @@ it.each([
 });
 
 it.each([
-    [undefined, /did not confirm/],
-    [reply({}), /did not confirm/],
-    [{ tag: 'iq', attrs: { type: 'result' }, content: [{ tag: 'result', attrs: {}, content: '{' }] }, /did not confirm/],
+    [reply({}), 'empty MEX payload'],
+    [{ tag: 'iq', attrs: { type: 'result' }, content: [{ tag: 'result', attrs: {}, content: '{' }] }, 'unrecognized MEX payload'],
+])('accepts a protocol-level IQ result with %s', async response => {
+    socket.query.mockResolvedValue(response);
+    await expect(execute('clearAbout')).resolves.toEqual({ json: { success: true } });
+    expect(socket.query).toHaveBeenCalledTimes(1);
+});
+
+it.each([
+    [undefined, /did not acknowledge/],
     [reply({ data: { xwa2_update_text_status: { result: false } } }), /rejected/],
     [reply({ ...acknowledged, errors: [{ message: 'private server detail' }] }), /rejected/],
     [{ tag: 'iq', attrs: { type: 'error' } }, /rejected/],
-])('rejects unconfirmed or failed MEX replies', async (response, message) => {
+])('rejects unacknowledged or explicitly failed MEX replies', async (response, message) => {
     socket.query.mockResolvedValue(response);
     await expect(execute('clearAbout')).rejects.toThrow(message);
     expect(socket.query).toHaveBeenCalledTimes(1);

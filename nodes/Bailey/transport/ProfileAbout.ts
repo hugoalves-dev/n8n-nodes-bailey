@@ -80,7 +80,10 @@ async function writeAbout(sock: Pick<WASocket, 'query'>, input: AboutInput): Pro
     if (reply?.attrs.type === 'error' || (reply && getBinaryNodeChild(reply, 'error'))) {
         throw new Error('WhatsApp rejected the About request. Check the note and duration.');
     }
-    const content = reply?.attrs.type === 'result' ? getBinaryNodeChild(reply, 'result')?.content : undefined;
+    if (reply?.attrs.type !== 'result') {
+        throw new Error('WhatsApp did not acknowledge the About request. Check the linked session and try again.');
+    }
+    const content = getBinaryNodeChild(reply, 'result')?.content;
     let response: { errors?: unknown; data?: { xwa2_update_text_status?: { result?: unknown } } } | undefined;
     if (typeof content === 'string' || content instanceof Uint8Array) {
         try {
@@ -93,9 +96,10 @@ async function writeAbout(sock: Pick<WASocket, 'query'>, input: AboutInput): Pro
         response?.data?.xwa2_update_text_status?.result === false) {
         throw new Error('WhatsApp rejected the About request. Check the note and duration.');
     }
-    if (response?.data?.xwa2_update_text_status?.result !== true) {
-        throw new Error('WhatsApp did not confirm the About change. Check the note in WhatsApp before retrying.');
-    }
+    // Some successful WhatsApp responses acknowledge the IQ request without returning
+    // xwa2_update_text_status.result. The IQ result above is the protocol-level ACK;
+    // only explicit GraphQL errors or result:false should be treated as a rejection.
+
 }
 
 export async function updateAbout(sock: Pick<WASocket, 'query'>, input: AboutInput) {
