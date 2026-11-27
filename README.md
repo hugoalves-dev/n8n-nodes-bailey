@@ -30,6 +30,18 @@ The Bailey Trigger adds `_contactName` to each received message when the phone's
 
 The **History Sync** event can be selected in Bailey Trigger. **User → Fetch Message History** requires a known message key (`remoteJid`, `id`, `fromMe`) and a positive Unix timestamp. It requests history asynchronously; results arrive through `messaging-history.set` and can be partial or absent. The caller must persist cursors, deduplicate and handle incomplete recovery; requesting history does not guarantee recovery or downstream notification.
 
+### WhatsApp profile About
+
+Use **Bailey → Profile → Update About** to set the temporary note visible from your profile and chats. Enter text of up to 50 Unicode code points and optionally choose one emoji. The duration presets are 1 hour, 8 hours, 24 hours (default), 2 days, and 7 days. **Custom** takes a future date and time. An expression should return an ISO 8601 value with a time zone. Bailey sends the remaining time in seconds, and WhatsApp can reject durations outside the range supported by the account.
+
+For a scheduled note, connect **Schedule Trigger** (for example, weekdays at 09:00 in the workflow time zone) to **Bailey → Profile → Update About**. Set **About Text** to `Available for calls`, **Emoji** to `☎️`, and **Duration** to **8 Hours**. For a custom expiration, you can set **Expiration** to `{{ $now.plus({ hours: 8 }).toISO() }}`.
+
+**Get About** reads the linked account only and returns `text`, `emoji`, `durationSeconds`, and `expiresAt` when WhatsApp provides them. Missing individual values are returned as `null`. A missing or rejected About response surfaces an error because the account or protocol variant may not support reading. **Clear About** requests removal of the current note. **Update Status** continues to use the legacy profile status endpoint with its existing fields.
+
+About uses unofficial WhatsApp Web MEX and USync protocols and may vary by account or stop working after a WhatsApp update. Bailey does not expose About audience controls. Manage the audience in WhatsApp. These operations do not affect Status/Stories.
+
+Before relying on About in a workflow, pair a dedicated disposable WhatsApp account in a test n8n installation. Verify that a note with emoji and a preset appears correctly on WhatsApp Web and mobile, then repeat with a custom date and compare the visible expiry. Check **Get About** before and after **Clear About** and confirm that clearing removes the visible note. Compare against the account's capabilities if read is unavailable. Unit tests use mocked protocol responses and do not establish live support.
+
 ### Persistent chat archive state (v0.4.1)
 
 The connection pool captures explicit `archived: true/false` flags from `chats.upsert`, `chats.update`, and `messaging-history.set`, even when no workflow Trigger is registered yet. It persists just the JID, archive flag, and last observed timestamp at `<auth path>/<sessionId>/chat-archive-state.json`. This state survives normal socket reconnections and n8n restarts if the session volume is persistent.
