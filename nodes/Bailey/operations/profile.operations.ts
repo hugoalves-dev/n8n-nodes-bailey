@@ -2,11 +2,26 @@
 // @ts-nocheck
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+import { buildAboutInput, clearAbout, defaultAboutDuration, getAbout, updateAbout } from '../transport/ProfileAbout';
 export { executeProfileOperation };
 const n8n_workflow_1 = require("n8n-workflow");
 async function executeProfileOperation(sock, operation, i) {
     var _a, _b, _c, _d;
     switch (operation) {
+        case 'updateAbout': {
+            const duration = this.getNodeParameter('aboutDuration', i, defaultAboutDuration);
+            const input = buildAboutInput(
+                this.getNodeParameter('aboutText', i),
+                this.getNodeParameter('aboutEmoji', i, ''),
+                duration,
+                duration === 'custom' ? this.getNodeParameter('aboutExpiresAt', i) : undefined,
+            );
+            return { json: await updateAbout(sock, input) };
+        }
+        case 'getAbout':
+            return { json: await getAbout(sock) };
+        case 'clearAbout':
+            return { json: await clearAbout(sock) };
         case 'updateStatus': {
             const status = this.getNodeParameter('status', i);
             await sock.updateProfileStatus(status);
