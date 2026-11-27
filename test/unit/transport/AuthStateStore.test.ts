@@ -1,11 +1,11 @@
-import { mkdtempSync, rmSync } from 'fs';
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 jest.mock('@whiskeysockets/baileys', () => ({
 	BufferJSON: { replacer: (_key: string, value: unknown) => value, reviver: (_key: string, value: unknown) => value },
 	initAuthCreds: () => ({ registered: false }),
 }));
-import { sessionDirFromConfig, useFileAuthState } from '../../../nodes/Bailey/transport/AuthStateStore';
+import { clearSessionAuthFiles, sessionDirFromConfig, useFileAuthState } from '../../../nodes/Bailey/transport/AuthStateStore';
 
 describe('sessionDirFromConfig', () => {
 	let root: string;
@@ -19,6 +19,25 @@ describe('sessionDirFromConfig', () => {
 
 	it('rejects a session id that escapes the configured root', () => {
 		expect(() => sessionDirFromConfig(root, '../outside')).toThrow('Session ID must be a single path segment');
+	});
+
+	it('clears revoked auth files and temporary writes while keeping metadata and other sessions', async () => {
+		const session = sessionDirFromConfig(root, 'revoked');
+		const other = sessionDirFromConfig(root, 'other');
+		const state = await useFileAuthState(session);
+		await state.saveCreds();
+		await state.keys.set({ 'session': { example: Buffer.from('old key') } });
+		await (await useFileAuthState(other)).saveCreds();
+		writeFileSync(join(session, 'creds.json.tmp'), '{}');
+		writeFileSync(join(session, 'pre-key-example.json.tmp'), '{}');
+		writeFileSync(join(session, 'chat-archive-state.json'), '{}');
+
+		state.invalidate();
+		clearSessionAuthFiles(session);
+		await state.saveCreds();
+		await state.keys.set({ 'session': { example: Buffer.from('stale write') } });
+		expect(readdirSync(session)).toEqual(['chat-archive-state.json']);
+		expect(readdirSync(other)).toEqual(['creds.json']);
 	});
 
 	it('persists credentials and keys atomically in the selected session', async () => {

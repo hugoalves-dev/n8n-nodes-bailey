@@ -105,9 +105,9 @@ it.each([
 });
 
 it.each([
-    [reply({}), 'empty MEX payload'],
-    [{ tag: 'iq', attrs: { type: 'result' }, content: [{ tag: 'result', attrs: {}, content: '{' }] }, 'unrecognized MEX payload'],
-])('accepts a protocol-level IQ result with %s', async response => {
+    { response: reply({}), description: 'empty MEX payload' },
+    { response: { tag: 'iq', attrs: { type: 'result' }, content: [{ tag: 'result', attrs: {}, content: '{' }] }, description: 'unrecognized MEX payload' },
+])('accepts a protocol-level IQ result with $description', async ({ response }) => {
     socket.query.mockResolvedValue(response);
     await expect(execute('clearAbout')).resolves.toEqual({ json: { success: true } });
     expect(socket.query).toHaveBeenCalledTimes(1);

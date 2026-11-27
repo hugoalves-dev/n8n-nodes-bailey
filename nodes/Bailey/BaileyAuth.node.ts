@@ -1,7 +1,7 @@
 import type { IExecuteFunctions, INodeExecutionData, INodeType, INodeTypeDescription } from 'n8n-workflow';
 import { NodeConnectionTypes } from 'n8n-workflow';
 import * as QRCode from 'qrcode';
-import { getLastDisconnect, getOrCreateConnection, getPoolEntry, getSessionEnded, getSessionSubscriptionStatus, listSessionSubscriptionStatuses } from './transport/ConnectionPool';
+import { getLastDisconnect, getOrCreateConnection, getPoolEntry, getSessionEnded, getSessionSubscriptionStatus, listSessionSubscriptionStatuses, repairLoggedOutSession } from './transport/ConnectionPool';
 import { waitForAuthPrompt } from './transport/AuthSetupService';
 import { normalizePhoneNumber } from './transport/TransportPolicy';
 
@@ -27,6 +27,7 @@ class BaileyAuth implements INodeType {
 				options: [
 					{ name: 'Start Pairing', value: 'startPairing', description: 'Return a code or QR without waiting for authentication', action: 'Return a code or QR without waiting for authentication' },
 					{ name: 'Check Status', value: 'checkStatus', description: 'Inspect the active connection without requesting a code', action: 'Inspect the active connection without requesting a code' },
+					{ name: 'Re-Pair Logged-Out Session', value: 'repairLoggedOutSession', description: 'Clear revoked authentication files and return a new code or QR for the same session ID', action: 'Pair a logged out session again' },
 					{ name: 'Wait for Authentication', value: 'waitForAuthentication', description: 'Legacy mode: wait for success or failure and log the prompt', action: 'Wait for success or failure and log the prompt' },
 				],
 			},
@@ -56,10 +57,13 @@ class BaileyAuth implements INodeType {
 			const sessionEnded = getSessionEnded(sessionId);
 			const lastDisconnect = getLastDisconnect(sessionId);
 			const authStatus = authenticated ? 'authenticated' : sessionEnded ? 'loggedOut' : 'pending';
-			return [[{ json: { sessionId, authenticated, authStatus, connection, triggerSubscriptions, otherSessionSubscriptions, sessionEnded, lastDisconnect } }]];
+			return [[{ json: { sessionId, authenticated, authStatus, connection, triggerSubscriptions, otherSessionSubscriptions, sessionEnded, lastDisconnect, connectionOpenedAt: entry?.connectionOpenedAt ?? null, lastInboundMessageAt: entry?.lastInboundMessageAt ?? null } }]];
 		}
 
-		const socket = await getOrCreateConnection(credentials as never, operation === 'startPairing');
+		const returnOnPrompt = operation === 'startPairing' || operation === 'repairLoggedOutSession';
+		const socket = operation === 'repairLoggedOutSession'
+			? await repairLoggedOutSession({ ...credentials, sessionId })
+			: await getOrCreateConnection(credentials, returnOnPrompt);
 		let promptActive = true;
 		const isSocketActive = () => {
 			const entry = getPoolEntry(sessionId);
@@ -71,9 +75,9 @@ class BaileyAuth implements INodeType {
 			authMethod,
 			phoneNumber,
 			timeoutMs: 300_000,
-			returnOnPrompt: operation === 'startPairing',
+			returnOnPrompt,
 			onPrompt: (prompt) => {
-				if (operation === 'startPairing' || !promptActive || !isSocketActive()) return;
+				if (returnOnPrompt || !promptActive || !isSocketActive()) return;
 				if (prompt.status === 'pairingCode') {
 					const code = prompt.pairingCode.length === 8
 						? `${prompt.pairingCode.slice(0, 4)}-${prompt.pairingCode.slice(4)}`

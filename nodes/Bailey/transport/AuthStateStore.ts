@@ -35,12 +35,29 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-export { useFileAuthState };
+export { useFileAuthState, clearSessionAuthFiles };
 export { sessionDirFromConfig };
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 const baileys_1 = require("@whiskeysockets/baileys");
+// These are the Signal key namespaces written by Baileys rc14 and previous versions.
+const authKeyFile = /^(?:pre-key|session|sender-key|app-state-sync-key|app-state-sync-version|lid-mapping|device-list|tctoken|identity-key)-.+\.json(?:\.tmp)?$/;
+
+function clearSessionAuthFiles(sessionDir) {
+    if (!fs.existsSync(sessionDir)) return;
+    if (!fs.lstatSync(sessionDir).isDirectory()) {
+        throw new Error('The WhatsApp session path must be a directory.');
+    }
+    const files = fs.readdirSync(sessionDir);
+    for (const file of files) {
+        if (file === 'creds.json.tmp' || authKeyFile.test(file)) fs.unlinkSync(path.join(sessionDir, file));
+    }
+    // Keep the revoked credential in place if deleting a key fails partway through.
+    if (files.includes('creds.json')) fs.unlinkSync(path.join(sessionDir, 'creds.json'));
+}
+
 async function useFileAuthState(sessionDir) {
+    let invalidated = false;
     var _a;
     if (!fs.existsSync(sessionDir)) {
         fs.mkdirSync(sessionDir, { recursive: true });
@@ -79,7 +96,7 @@ async function useFileAuthState(sessionDir) {
     };
     const creds = (_a = readJSON(credsFile)) !== null && _a !== void 0 ? _a : (0, baileys_1.initAuthCreds)();
     const saveCreds = async () => {
-        writeJSON(credsFile, creds);
+        if (!invalidated) writeJSON(credsFile, creds);
     };
     const keys = {
         async get(type, ids) {
@@ -94,6 +111,7 @@ async function useFileAuthState(sessionDir) {
             return data;
         },
         async set(data) {
+            if (invalidated) return;
             for (const [type, values] of Object.entries(data)) {
                 if (!values)
                     continue;
@@ -110,15 +128,13 @@ async function useFileAuthState(sessionDir) {
             }
         },
         async clear() {
-            const files = fs.readdirSync(sessionDir);
-            for (const file of files) {
-                if (file !== 'creds.json') {
-                    fs.unlinkSync(path.join(sessionDir, file));
-                }
+            if (invalidated) return;
+            for (const file of fs.readdirSync(sessionDir)) {
+                if (authKeyFile.test(file)) fs.unlinkSync(path.join(sessionDir, file));
             }
         },
     };
-    return { creds, keys, saveCreds };
+    return { creds, keys, saveCreds, invalidate: () => { invalidated = true; } };
 }
 function sessionDirFromConfig(authDataPath, sessionId) {
     const id = String(sessionId);

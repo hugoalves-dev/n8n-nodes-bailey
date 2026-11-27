@@ -1,4 +1,5 @@
 const mockGetOrCreateConnection = jest.fn();
+const mockRepairLoggedOutSession = jest.fn();
 const mockGetPoolEntry = jest.fn();
 const mockGetSessionSubscriptionStatus = jest.fn(() => ({ registered: 0, bound: 0 }));
 const mockListSessionSubscriptionStatuses = jest.fn((): unknown[] => []);
@@ -10,6 +11,7 @@ const mockQrToString = jest.fn();
 
 jest.mock('../../nodes/Bailey/transport/ConnectionPool', () => ({
 	getOrCreateConnection: (...args: unknown[]) => mockGetOrCreateConnection(...args),
+	repairLoggedOutSession: (...args: unknown[]) => mockRepairLoggedOutSession(...args),
 	getPoolEntry: (...args: unknown[]) => mockGetPoolEntry(...args),
 	getSessionSubscriptionStatus: (...args: unknown[]) => mockGetSessionSubscriptionStatus(...args as []),
 	listSessionSubscriptionStatuses: () => mockListSessionSubscriptionStatuses(),
@@ -59,6 +61,19 @@ describe('Bailey Auth node output', () => {
 		expect(mockWaitForAuthPrompt).toHaveBeenCalledWith(expect.objectContaining({ returnOnPrompt: true }));
 		expect(item.json).toMatchObject({ authenticated: false, authStatus: 'pairingCode', pairingCode: '1234-5678' });
 		expect(context.logger.info).not.toHaveBeenCalled();
+	});
+
+	it('returns a prompt through the explicit re-pair operation for the selected session', async () => {
+		const socket = {};
+		mockRepairLoggedOutSession.mockResolvedValue(socket);
+		mockWaitForAuthPrompt.mockResolvedValue({ status: 'pairingCode', pairingCode: '12345678' });
+
+		const { result } = await execute('pairingCode', 'repairLoggedOutSession');
+
+		expect(mockRepairLoggedOutSession).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 'test-session' }));
+		expect(mockGetOrCreateConnection).not.toHaveBeenCalled();
+		expect(mockWaitForAuthPrompt).toHaveBeenCalledWith(expect.objectContaining({ socket, returnOnPrompt: true }));
+		expect(result[0][0]).toMatchObject({ json: { pairingCode: '1234-5678', authenticated: false } });
 	});
 
 	it('returns a scannable QR in the Binary tab', async () => {
