@@ -35,7 +35,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-export { getOrCreateConnection };
+export { getOrCreateConnection, repairLoggedOutSession };
 export { waitForConnectionOpen };
 export { registerExternalSocket };
 export { deregisterSocket };
@@ -64,9 +64,10 @@ const poolState = globalThis[POOL_STATE_KEY] ??= {
 };
 // Added after v1 shipped: an older module copy may have created poolState without these maps.
 poolState.endedSessions ??= new Map();
+poolState.sessionsAwaitingRepair ??= new Map();
 poolState.lastDisconnects ??= new Map();
 poolState.reconnectAttempts ??= new Map();
-const { pool, pendingConnections, reconnectTimers, sessionSubscriptions, endedSessions, lastDisconnects, reconnectAttempts } = poolState;
+const { pool, pendingConnections, reconnectTimers, sessionSubscriptions, endedSessions, lastDisconnects, reconnectAttempts, sessionsAwaitingRepair } = poolState;
 const DEFAULT_IDLE_TIMEOUT_MS = 30000;
 const RECONNECT_BASE_DELAY_MS = 3000;
 const RECONNECT_MAX_DELAY_MS = 5 * 60 * 1000;
@@ -74,7 +75,7 @@ const RECONNECT_MAX_DELAY_MS = 5 * 60 * 1000;
 class SessionLoggedOutError extends Error {
     constructor(sessionId, details) {
         const detail = details.detail ? `, ${details.detail}` : '';
-        super(`[Bailey] WhatsApp session "${sessionId}" was logged out (code ${details.statusCode ?? 'unknown'}${detail}) at ${details.at}. Pair it again: delete the session directory or use a new session ID in the credential, then re-activate the workflow.`);
+        super(`[Bailey] WhatsApp session "${sessionId}" was logged out (code ${details.statusCode ?? 'unknown'}${detail}) at ${details.at}. Run Re-Pair Logged-Out Session in Bailey Auth, then re-activate the workflow.`);
         this.name = 'SessionLoggedOutError';
         this.sessionId = sessionId;
         this.details = details;
@@ -135,6 +136,7 @@ async function subscribeToSession(credentials, bind, { onSessionEnded } = {}) {
         subscription.cleanup?.();
         if (subscriptions.size) return;
         sessionSubscriptions.delete(sessionId);
+        if (sessionsAwaitingRepair.has(sessionId)) return;
         const entry = pool.get(sessionId);
         deregisterSocket(sessionId);
         entry?.socket.end(undefined);
@@ -162,8 +164,31 @@ function notifySessionEnded(sessionId, details) {
         subscription.onSessionEnded?.(details);
     }
 }
-async function getOrCreateConnection(credentials, keepAlive = false) {
+function repairLoggedOutSession(credentials) {
+    const { sessionId, authDataPath } = credentials;
+    const sessionDir = (0, AuthStateStore_1.sessionDirFromConfig)(authDataPath ?? '~/.n8n/baileys', sessionId);
+    const repairDir = sessionsAwaitingRepair.get(sessionId);
+    if (repairDir && repairDir !== sessionDir) {
+        throw new Error('Use the same auth data path to complete re-pairing this session.');
+    }
+    if (!repairDir) {
+        const ended = endedSessions.get(sessionId);
+        if (!ended || (ended.sessionDir && ended.sessionDir !== sessionDir) || pool.has(sessionId) || pendingConnections.has(sessionId)) {
+            throw new Error('Re-pairing requires a confirmed logout for this session. Use Start Pairing for a new or active session.');
+        }
+        (0, AuthStateStore_1.clearSessionAuthFiles)(sessionDir);
+        deregisterSocket(sessionId);
+        sessionsAwaitingRepair.set(sessionId, sessionDir);
+        endedSessions.delete(sessionId);
+    }
+    return getOrCreateConnection(credentials, true, true);
+}
+
+async function getOrCreateConnection(credentials, keepAlive = false, allowRepair = false) {
     const { sessionId, messageCacheSize, idleTimeoutSeconds } = credentials;
+    if (sessionsAwaitingRepair.has(sessionId) && !allowRepair) {
+        throw new Error('[Bailey] Complete re-pairing in Bailey Auth before activating the workflow.');
+    }
     const scheduledReconnect = reconnectTimers.get(sessionId);
     if (scheduledReconnect) {
         clearTimeout(scheduledReconnect);
@@ -171,6 +196,7 @@ async function getOrCreateConnection(credentials, keepAlive = false) {
     }
     const existing = pool.get(sessionId);
     if (existing) {
+        acknowledgeStatusStanzas(existing.socket);
         if (existing.idleTimer)
             clearTimeout(existing.idleTimer);
         existing.keepAlive = existing.keepAlive || keepAlive;
@@ -191,10 +217,24 @@ async function getOrCreateConnection(credentials, keepAlive = false) {
         pendingConnections.delete(sessionId);
     }
 }
+function acknowledgeStatusStanzas(sock) {
+    // rc14 exposes sendMessageAck, but its ordered offline processor is private.
+    // ACK at receipt for both live and offline stanzas without touching the message queue.
+    if (sock.ws && typeof sock.sendMessageAck === 'function' && !sock.ws.listenerCount('CB:status')) {
+        sock.ws.on('CB:status', async (node) => {
+            try {
+                await sock.sendMessageAck(node);
+            } catch {
+                console.warn('[Bailey] Could not acknowledge a WhatsApp status stanza.');
+            }
+        });
+    }
+}
+
 async function createConnection(credentials, idleTimeoutMs, cacheSize, keepAlive = false) {
     const { sessionId, authDataPath, syncFullHistory, markOnlineOnConnect, browserName, proxyUrl } = credentials;
     const sessionDir = (0, AuthStateStore_1.sessionDirFromConfig)(authDataPath !== null && authDataPath !== void 0 ? authDataPath : '~/.n8n/baileys', sessionId);
-    const { creds, keys, saveCreds } = await (0, AuthStateStore_1.useFileAuthState)(sessionDir);
+    const { creds, keys, saveCreds, invalidate } = await (0, AuthStateStore_1.useFileAuthState)(sessionDir);
     // WhatsApp revoked these credentials. Connecting again only earns another 401 and, when a
     // re-activated trigger does it in a loop, gets the account flagged. Wait for a new pairing.
     const ended = endedSessions.get(sessionId);
@@ -237,6 +277,7 @@ async function createConnection(credentials, idleTimeoutMs, cacheSize, keepAlive
         }
     }
     const sock = (0, baileys_1.default)(socketConfig);
+    acknowledgeStatusStanzas(sock);
     sock.ev.on('creds.update', () => {
         const active = pool.get(sessionId);
         if (!active || active.socket !== sock) return;
@@ -248,13 +289,15 @@ async function createConnection(credentials, idleTimeoutMs, cacheSize, keepAlive
         const entry = pool.get(sessionId);
         if (!entry || entry.socket !== sock) return;
         entry.authRegistered = creds.registered === true;
-        if (entry.authRegistered) {
+        if (entry.authRegistered && !sessionsAwaitingRepair.has(sessionId)) {
             if (entry.authTimer) clearTimeout(entry.authTimer);
             entry.authTimer = null;
             if (!entry.keepAlive && !entry.idleTimer) entry.idleTimer = scheduleIdle(sessionId, idleTimeoutMs);
         }
     });
     sock.ev.on('messages.upsert', ({ messages }) => {
+        const entry = pool.get(sessionId);
+        if (entry?.socket === sock && messages.length) entry.lastInboundMessageAt = new Date().toISOString();
         for (const msg of messages) {
             if (msg.key && msg.message) {
                 messageCache.set(msg.key, msg.message);
@@ -303,6 +346,8 @@ async function createConnection(credentials, idleTimeoutMs, cacheSize, keepAlive
                 });
             }
             entry.authRegistered = true;
+            entry.connectionOpenedAt = new Date().toISOString();
+            if (sessionsAwaitingRepair.delete(sessionId)) bindSessionSubscriptions(sessionId, sock);
             if (entry.authTimer) clearTimeout(entry.authTimer);
             entry.authTimer = null;
             if (!entry.keepAlive && !entry.idleTimer) {
@@ -316,7 +361,12 @@ async function createConnection(credentials, idleTimeoutMs, cacheSize, keepAlive
             if (currentEntry.idleTimer) clearTimeout(currentEntry.idleTimer);
             unbindSessionSubscriptions(sessionId, sock);
             const statusCode = (_b = (_a = lastDisconnect === null || lastDisconnect === void 0 ? void 0 : lastDisconnect.error) === null || _a === void 0 ? void 0 : _a.output) === null || _b === void 0 ? void 0 : _b.statusCode;
-            const shouldReconnect = statusCode !== baileys_1.DisconnectReason.loggedOut && !(currentEntry === null || currentEntry === void 0 ? void 0 : currentEntry.authenticationTimedOut);
+            const awaitingRepair = sessionsAwaitingRepair.has(sessionId);
+            const pairingRestart = statusCode === baileys_1.DisconnectReason.restartRequired
+                && !reconnectAttempts.has(sessionId);
+            const shouldReconnect = statusCode !== baileys_1.DisconnectReason.loggedOut
+                && !currentEntry.authenticationTimedOut
+                && (!awaitingRepair || pairingRestart);
             const disconnect = describeDisconnect(lastDisconnect);
             lastDisconnects.set(sessionId, { ...disconnect, loggedOut: statusCode === baileys_1.DisconnectReason.loggedOut });
             if (shouldReconnect) {
@@ -331,9 +381,9 @@ async function createConnection(credentials, idleTimeoutMs, cacheSize, keepAlive
                     reconnectTimers.delete(sessionId);
                     if (pool.has(sessionId)) return;
                     const hadSubscriptions = sessionSubscriptions.has(sessionId);
-                    getOrCreateConnection(credentials, currentEntry.keepAlive).then((socket) => {
+                    getOrCreateConnection(credentials, currentEntry.keepAlive, awaitingRepair).then((socket) => {
                         // The last trigger may have been deactivated while auth state was loading.
-                        if (hadSubscriptions && !sessionSubscriptions.has(sessionId) && pool.get(sessionId)?.socket === socket) {
+                        if (!awaitingRepair && hadSubscriptions && !sessionSubscriptions.has(sessionId) && pool.get(sessionId)?.socket === socket) {
                             deregisterSocket(sessionId);
                             socket.end(undefined);
                         }
@@ -349,8 +399,11 @@ async function createConnection(credentials, idleTimeoutMs, cacheSize, keepAlive
                 if (statusCode === baileys_1.DisconnectReason.loggedOut) {
                     // Must be recorded before subscribers hear about it: n8n re-activates the trigger
                     // synchronously from emitError, and that activation has to be refused.
-                    endedSessions.set(sessionId, { fingerprint: credsFingerprint(creds), details: disconnect });
+                    invalidate?.();
+                    sessionsAwaitingRepair.delete(sessionId);
+                    endedSessions.set(sessionId, { fingerprint: credsFingerprint(creds), details: disconnect, sessionDir });
                 }
+                if (awaitingRepair && statusCode !== baileys_1.DisconnectReason.loggedOut) return;
                 notifySessionEnded(sessionId, {
                     statusCode,
                     reason: currentEntry.authenticationTimedOut ? 'authenticationTimedOut' : 'loggedOut',
@@ -366,7 +419,7 @@ async function createConnection(credentials, idleTimeoutMs, cacheSize, keepAlive
         contactNameStore,
         lastUsed: Date.now(),
         idleTimer: creds.registered && !keepAlive ? scheduleIdle(sessionId, idleTimeoutMs) : null,
-        authTimer: creds.registered ? null : scheduleAuthTimeout(sessionId, sock),
+        authTimer: !creds.registered || sessionsAwaitingRepair.has(sessionId) ? scheduleAuthTimeout(sessionId, sock) : null,
         sessionId,
         connectionState: { ...initialConnectionState },
         authRegistered: creds.registered === true,
@@ -375,7 +428,7 @@ async function createConnection(credentials, idleTimeoutMs, cacheSize, keepAlive
         keepAlive,
     };
     pool.set(sessionId, entry);
-    bindSessionSubscriptions(sessionId, sock);
+    if (!sessionsAwaitingRepair.has(sessionId)) bindSessionSubscriptions(sessionId, sock);
     return sock;
 }
 function scheduleIdle(sessionId, timeoutMs) {
@@ -396,7 +449,7 @@ function scheduleIdle(sessionId, timeoutMs) {
 function scheduleAuthTimeout(sessionId, socket) {
     const timer = setTimeout(() => {
         const entry = pool.get(sessionId);
-        if (!entry || entry.socket !== socket || entry.authRegistered) return;
+        if (!entry || entry.socket !== socket || (entry.authRegistered && !sessionsAwaitingRepair.has(sessionId))) return;
         entry.authenticationTimedOut = true;
         socket.end(undefined);
     }, AUTHENTICATION_TIMEOUT_MS);

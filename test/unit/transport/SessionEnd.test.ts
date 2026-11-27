@@ -1,21 +1,26 @@
 import { EventEmitter } from 'events';
 
 const sockets: Array<{ ev: EventEmitter; end: jest.Mock }> = [];
+const mockClearSessionAuthFiles = jest.fn();
+let mockRegistered = true;
 let mockAdvSecretKey = 'pairing-1';
 jest.mock('@whiskeysockets/baileys', () => ({
 	__esModule: true,
 	default: () => { const socket = { ev: new EventEmitter(), end: jest.fn() }; sockets.push(socket); return socket; },
-	Browsers: { ubuntu: () => [] }, DisconnectReason: { loggedOut: 401 },
+	Browsers: { ubuntu: () => [] }, DisconnectReason: { loggedOut: 401, restartRequired: 515 },
 	makeCacheableSignalKeyStore: (keys: unknown) => keys,
 }));
 jest.mock('../../../nodes/Bailey/transport/AuthStateStore', () => ({
-	sessionDirFromConfig: () => '/tmp/test',
-	useFileAuthState: async () => ({ creds: { registered: true, advSecretKey: mockAdvSecretKey }, keys: {}, saveCreds: jest.fn() }),
+	sessionDirFromConfig: (root: string, id: string) => root + '/' + id,
+	clearSessionAuthFiles: (...args: unknown[]) => mockClearSessionAuthFiles(...args),
+	useFileAuthState: async () => ({ creds: { registered: mockRegistered, advSecretKey: mockAdvSecretKey }, keys: {}, saveCreds: jest.fn() }),
 }));
 import {
 	getLastDisconnect,
 	getOrCreateConnection,
 	getSessionEnded,
+	getSessionSubscriptionStatus,
+	repairLoggedOutSession,
 	subscribeToSession,
 } from '../../../nodes/Bailey/transport/ConnectionPool';
 
@@ -29,7 +34,7 @@ const deviceRemoved = {
 const restartRequired = { error: { message: 'Stream Errored (restart required)', output: { statusCode: 515 } } };
 const latest = () => sockets[sockets.length - 1];
 
-beforeEach(() => { mockAdvSecretKey = 'pairing-1'; });
+beforeEach(() => { mockAdvSecretKey = 'pairing-1'; mockRegistered = true; mockClearSessionAuthFiles.mockReset(); });
 afterEach(() => jest.useRealTimers());
 
 it('refuses to open a new socket with the credentials WhatsApp logged out', async () => {
@@ -113,5 +118,44 @@ it('backs off between consecutive failed reconnects and resets after the connect
 	count = sockets.length;
 	await jest.advanceTimersByTimeAsync(3000);
 	expect(sockets).toHaveLength(count + 1);
+	release();
+});
+
+it('requires an explicit repair after logout and binds triggers only after the new login opens', async () => {
+	jest.useFakeTimers();
+	const credentials = { sessionId: 'repair-same-id', authDataPath: '/sessions' };
+	const other = { ...credentials, sessionId: 'repair-other-id' };
+	const otherSocket = await getOrCreateConnection(other, true);
+	const release = await subscribeToSession(credentials, () => () => {});
+	await expect(async () => repairLoggedOutSession(credentials)).rejects.toThrow(/confirmed logout/i);
+	latest().ev.emit('connection.update', { connection: 'close', lastDisconnect: deviceRemoved });
+	const count = sockets.length;
+	await jest.advanceTimersByTimeAsync(60_000);
+	expect(sockets).toHaveLength(count);
+	await expect(subscribeToSession(credentials, jest.fn())).rejects.toThrow(/logged out/i);
+
+	mockClearSessionAuthFiles.mockImplementation(() => {
+		mockRegistered = false;
+		mockAdvSecretKey = 'fresh-key';
+	});
+	const [socket, sameSocket] = await Promise.all([
+		repairLoggedOutSession(credentials), repairLoggedOutSession(credentials),
+	]);
+	expect(socket).toBe(sameSocket);
+	expect(sockets).toHaveLength(count + 1);
+	expect(mockClearSessionAuthFiles).toHaveBeenCalledTimes(1);
+	expect(mockClearSessionAuthFiles).toHaveBeenCalledWith('/sessions/repair-same-id');
+	expect(getSessionEnded(credentials.sessionId)).toBeNull();
+	expect(getSessionSubscriptionStatus(credentials.sessionId)).toEqual({ registered: 1, bound: 0 });
+	await expect(subscribeToSession(credentials, jest.fn())).rejects.toThrow(/complete re-pairing/i);
+	await expect(getOrCreateConnection(other, true)).resolves.toBe(otherSocket);
+
+	socket.ev.emit('connection.update', { connection: 'close', lastDisconnect: restartRequired });
+	await jest.advanceTimersByTimeAsync(3000);
+	expect(sockets).toHaveLength(count + 2);
+	expect(getSessionSubscriptionStatus(credentials.sessionId).bound).toBe(0);
+	latest().ev.emit('connection.update', { connection: 'open' });
+	expect(getSessionSubscriptionStatus(credentials.sessionId).bound).toBe(1);
+	await expect(getOrCreateConnection(credentials, true)).resolves.toBe(latest());
 	release();
 });
